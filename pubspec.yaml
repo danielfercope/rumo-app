@@ -1,0 +1,36 @@
+name: rumo_app
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.8.0
+  flutter_dotenv: ^5.2.1
+  cupertino_icons: ^1.0.8
+  google_maps_flutter: ^2.10.1
+  flutter_riverpod: ^2.6.1
+  geolocator: ^14.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/Save_Co._Simbolo_original_branco_escuro.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/Save_Co._Simbolo_outline_amarelo_escuro.png
