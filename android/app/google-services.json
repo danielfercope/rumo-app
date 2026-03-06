@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "665252418802",
+    "project_id": "rumo-1a7d2",
+    "storage_bucket": "rumo-1a7d2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665252418802:android:98dd866ec5e0de59a42c6b",
+        "android_client_info": {
+          "package_name": "com.rumo.dataRotaApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCbsy1AW4g8dNy5AGime_rXfMNdYwKucPs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
