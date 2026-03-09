@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:rumo_app/features/auth/register_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../map/providers/auth_provider.dart';
@@ -15,6 +17,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
   bool _obscurePassword = true;
 
   @override
@@ -39,7 +42,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             email: email,
             password: password,
           );
-      // O redirecionamento é automático pelo authStateProvider no main.dart
     } on AuthException catch (e) {
       if (!mounted) return;
       _showError(e.message);
@@ -48,6 +50,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       _showError('Ocorreu um erro inesperado. Tente novamente.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleGoogleLogin() async {
+    setState(() => _isGoogleLoading = true);
+    try {
+      await ref.read(authControllerProvider).signInWithGoogle();
+    } catch (e) {
+      if (!mounted) return;
+      _showError('Falha ao entrar com Google. Tente novamente.');
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
     }
   }
 
@@ -81,8 +95,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 const SizedBox(height: 20),
                 Image.asset(
                   'assets/Save_Co._Simbolo_outline_amarelo_escuro.png',
-                  height: 300,
-                  width: 300,
+                  height: 200,
+                  width: 200,
                 ),
                 const SizedBox(height: 20),
                 const Text(
@@ -93,32 +107,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     letterSpacing: 4,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Inteligência Comercial em Campo',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: CupertinoColors.systemGrey),
-                ),
                 const SizedBox(height: 48),
 
-                // Campo de e-mail
                 CupertinoTextField(
                   controller: _emailController,
                   placeholder: 'E-mail',
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
-                  textInputAction: TextInputAction.next,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   prefix: const Padding(
                     padding: EdgeInsets.only(left: 12),
-                    child: Icon(
-                      CupertinoIcons.mail,
-                      color: CupertinoColors.systemGrey,
-                      size: 20,
-                    ),
+                    child: Icon(CupertinoIcons.mail, color: CupertinoColors.systemGrey, size: 20),
                   ),
                   decoration: BoxDecoration(
                     color: CupertinoColors.darkBackgroundGray,
@@ -128,34 +127,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
                 const SizedBox(height: 12),
 
-                // Campo de senha
                 CupertinoTextField(
                   controller: _passwordController,
                   placeholder: 'Senha',
                   obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _handleLogin(),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   prefix: const Padding(
                     padding: EdgeInsets.only(left: 12),
-                    child: Icon(
-                      CupertinoIcons.lock,
-                      color: CupertinoColors.systemGrey,
-                      size: 20,
-                    ),
+                    child: Icon(CupertinoIcons.lock, color: CupertinoColors.systemGrey, size: 20),
                   ),
                   suffix: GestureDetector(
-                    onTap: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
+                    onTap: () => setState(() => _obscurePassword = !_obscurePassword),
                     child: Padding(
                       padding: const EdgeInsets.only(right: 12),
                       child: Icon(
-                        _obscurePassword
-                            ? CupertinoIcons.eye
-                            : CupertinoIcons.eye_slash,
+                        _obscurePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
                         color: CupertinoColors.systemGrey,
                         size: 20,
                       ),
@@ -167,30 +153,54 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     border: Border.all(color: CupertinoColors.systemGrey4),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                // Botão Entrar
                 SizedBox(
                   width: double.infinity,
                   child: CupertinoButton.filled(
-                    onPressed: _isLoading ? null : _handleLogin,
+                    onPressed: _isLoading || _isGoogleLoading ? null : _handleLogin,
                     child: _isLoading
-                        ? const CupertinoActivityIndicator(
-                      color: CupertinoColors.white,
-                    )
+                        ? const CupertinoActivityIndicator(color: CupertinoColors.white)
                         : const Text('Entrar'),
                   ),
                 ),
+                
+                const SizedBox(height: 16),
+                const Text('ou', style: TextStyle(color: CupertinoColors.systemGrey)),
                 const SizedBox(height: 16),
 
-                // Botão criar conta
+                // Botão de Login com Google usando flutter_svg
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: CupertinoColors.white,
+                    onPressed: _isLoading || _isGoogleLoading ? null : _handleGoogleLogin,
+                    padding: EdgeInsets.zero,
+                    child: _isGoogleLoading
+                        ? const CupertinoActivityIndicator()
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SvgPicture.network(
+                                'https://authjs.dev/img/providers/google.svg',
+                                height: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Entrar com Google',
+                                style: TextStyle(color: CupertinoColors.black),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
                 Center(
                   child: CupertinoButton(
                     onPressed: () => Navigator.push(
                       context,
-                      CupertinoPageRoute(
-                        builder: (_) => const RegisterPage(),
-                      ),
+                      CupertinoPageRoute(builder: (_) => const RegisterPage()),
                     ),
                     child: const Text('Criar conta'),
                   ),

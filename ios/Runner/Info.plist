@@ -59,6 +59,8 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>com.rumo.dataRotaApp</string>
+          <!-- REVERSED_CLIENT_ID do Google -->
+          <string>com.googleusercontent.apps.665252418802-ne4d47jjvagh5l7aj1d2qea3gi1q9slr</string>
         </array>
       </dict>
     </array>
