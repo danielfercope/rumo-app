@@ -83,6 +83,7 @@ class Company {
       saudeTributaria: json['saude_tributaria'] as String?,
       scorePropensao: json['score_propensao'] as String?,
       produto: json['produto'] as String?,
+      distance: (json['distance_km'] as num?)?.toDouble(),
     );
   }
 }

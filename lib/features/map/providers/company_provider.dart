@@ -15,17 +15,11 @@ final companiesProvider = FutureProvider<List<Company>>((ref) async {
   final filters = ref.watch(mapFiltersProvider);
 
   final position = locationAsync.value;
-  if (position == null) {
-    return [];
-  }
+  if (position == null) return []; // ainda loading
 
-  // O raio agora vem de dentro do objeto filters
-  print('DEBUG: [Provider] Chamando getCompaniesInRadius com Raio: ${filters.radius}km');
-  
-  return await service.getCompaniesInRadius(
+  return service.getCompanies(
     userLat: position.latitude,
     userLong: position.longitude,
-    radiusKm: filters.radius,
     filters: filters,
   );
 });
