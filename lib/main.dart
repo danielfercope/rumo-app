@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'features/auth/login_page.dart';
+import 'features/leads/leads_page.dart';
 import 'features/map/providers/auth_provider.dart';
 import 'features/map/radar_page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -67,10 +68,7 @@ class MainNavigation extends StatelessWidget {
               case 0:
                 return const RadarPage();
               case 1:
-                return CupertinoPageScaffold(
-                  navigationBar: const CupertinoNavigationBar(middle: Text('Meus Leads')),
-                  child: const Center(child: Text('Lista de Leads em breve...')),
-                );
+                return const LeadsPage();
               case 2:
                 return CupertinoPageScaffold(
                   navigationBar: const CupertinoNavigationBar(

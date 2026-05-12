@@ -1,41 +1,61 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
-final locationProvider = FutureProvider<Position?>((ref) async {
-  // Localização de Jaraguá do Sul para TESTE
-  final jaraguaPosition = Position(
-    latitude: -26.4843,
-    longitude: -49.0717,
-    timestamp: DateTime.now(),
-    accuracy: 0.0,
-    altitude: 0.0,
-    heading: 0.0,
-    speed: 0.0,
-    speedAccuracy: 0.0,
-    altitudeAccuracy: 0.0,
-    headingAccuracy: 0.0,
-  );
+// Posição padrão usada como fallback quando o GPS não está disponível
+// (ex: simulador sem localização configurada)
+const _defaultLat = -26.4843;
+const _defaultLon = -49.0717;
 
-  print('DEBUG: [Location] Forçando localização para Jaraguá do Sul para testes.');
-  return jaraguaPosition;
-  
-  /* Comentado temporariamente para não pegar a localização do simulador (EUA)
+Future<Position> _requestPosition() async {
   try {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return jaraguaPosition;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return jaraguaPosition;
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('GPS: serviço desabilitado — usando posição padrão');
+      return _fallback();
     }
 
-    return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.low,
-      timeLimit: const Duration(seconds: 3),
-    ).catchError((e) => jaraguaPosition);
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      debugPrint('GPS: permissão negada — usando posição padrão');
+      return _fallback();
+    }
+
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    ).timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        debugPrint('GPS: timeout — usando posição padrão');
+        return _fallback();
+      },
+    );
+
+    debugPrint('GPS: ${pos.latitude}, ${pos.longitude}');
+    return pos;
   } catch (e) {
-    return jaraguaPosition;
+    debugPrint('GPS erro: $e — usando posição padrão');
+    return _fallback();
   }
-  */
-});
+}
+
+Position _fallback() => Position(
+      latitude: _defaultLat,
+      longitude: _defaultLon,
+      timestamp: DateTime.now(),
+      accuracy: 0,
+      altitude: 0,
+      heading: 0,
+      speed: 0,
+      speedAccuracy: 0,
+      altitudeAccuracy: 0,
+      headingAccuracy: 0,
+    );
+
+// Agora retorna Position (nunca null) — se o GPS falhar usa o fallback
+final locationProvider = FutureProvider<Position>((ref) => _requestPosition());
