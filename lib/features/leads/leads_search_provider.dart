@@ -27,14 +27,14 @@ bool _hasNonRadiusFilter(MapFilters f) =>
 final leadsResultsProvider = FutureProvider<List<Company>?>((ref) async {
   final search = ref.watch(leadsSearchQueryProvider);
   final filters = ref.watch(mapFiltersProvider);
-  final service = ref.watch(companyServiceProvider);
+  final repo = ref.watch(companyRepositoryProvider);
 
   final hasQuery = !search.isEmpty;
   final hasFilters = _hasNonRadiusFilter(filters);
 
   if (!hasQuery && !hasFilters) return null;
 
-  return service.searchCompaniesText(
+  return repo.searchByText(
     query: hasQuery ? search.normalized : '',
     isCnpj: search.isCnpj,
     filters: filters,
