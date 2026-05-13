@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class MapFilters {
   final String? segment;
   final String? product;
-  final String? type; 
+  final String? type;
   final String? state;
   final String? city;
   final String? cnae;
@@ -57,19 +57,47 @@ class MapFilters {
       radius == 5.0;
 }
 
-final mapFiltersProvider = StateProvider<MapFilters>((ref) => MapFilters());
+class MapFiltersNotifier extends Notifier<MapFilters> {
+  @override
+  MapFilters build() => MapFilters();
 
-// Corrigido para Map<String, dynamic> pois agora inclui o mapa de cidades por estado
+  void setSegment(String? v) =>
+      state = state.copyWith(segment: v, clearSegment: v == null);
+
+  void setProduct(String? v) =>
+      state = state.copyWith(product: v, clearProduct: v == null);
+
+  void setType(String? v) =>
+      state = state.copyWith(type: v, clearType: v == null);
+
+  void setUf(String? v) =>
+      state = state.copyWith(state: v, clearState: v == null);
+
+  void setCity(String? v) =>
+      state = state.copyWith(city: v, clearCity: v == null);
+
+  void setCnae(String? v) =>
+      state = state.copyWith(cnae: v, clearCnae: v == null);
+
+  void setRadius(double v) => state = state.copyWith(radius: v);
+
+  void apply(MapFilters filters) => state = filters;
+
+  void clear() => state = MapFilters();
+}
+
+final mapFiltersProvider =
+    NotifierProvider<MapFiltersNotifier, MapFilters>(MapFiltersNotifier.new);
+
 final filterOptionsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final service = CompanyService(Supabase.instance.client);
   return await service.getFilterOptions();
 });
 
-// Provider para cidades filtradas pelo estado selecionado
 final filteredCitiesProvider = Provider<List<String>>((ref) {
   final allOptions = ref.watch(filterOptionsProvider).value;
   final filters = ref.watch(mapFiltersProvider);
-  
+
   if (allOptions == null) return [];
 
   if (filters.state != null) {
@@ -78,6 +106,5 @@ final filteredCitiesProvider = Provider<List<String>>((ref) {
     return cities?.cast<String>() ?? [];
   }
 
-  // Se não tiver estado, tenta retornar a lista geral de cidades se existir
   return (allOptions['cities'] as List? ?? []).cast<String>();
 });

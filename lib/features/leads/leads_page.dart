@@ -4,7 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../map/providers/filter_provider.dart';
 import '../map/models/company_model.dart';
-import '../map/radar_page.dart';
+import '../map/presentation/filter_modal.dart';
+import '../map/presentation/company_details_modal.dart';
 import 'leads_search_provider.dart';
 
 bool _looksLikeCnpj(String query) {
@@ -295,41 +296,41 @@ class _ActiveFiltersRow extends ConsumerWidget {
           if (filters.segment != null)
             _FilterChip(
               label: filters.segment!,
-              onRemove: () => notifier.update((f) => f.copyWith(clearSegment: true)),
+              onRemove: () => notifier.setSegment(null),
             ),
           if (filters.product != null)
             _FilterChip(
               label: filters.product!,
-              onRemove: () => notifier.update((f) => f.copyWith(clearProduct: true)),
+              onRemove: () => notifier.setProduct(null),
             ),
           if (filters.type != null)
             _FilterChip(
               label: filters.type == 'client' ? 'Cliente' : 'Lead',
-              onRemove: () => notifier.update((f) => f.copyWith(clearType: true)),
+              onRemove: () => notifier.setType(null),
             ),
           if (filters.state != null)
             _FilterChip(
               label: filters.state!,
-              onRemove: () => notifier.update((f) => f.copyWith(clearState: true)),
+              onRemove: () => notifier.setUf(null),
             ),
           if (filters.city != null)
             _FilterChip(
               label: filters.city!,
-              onRemove: () => notifier.update((f) => f.copyWith(clearCity: true)),
+              onRemove: () => notifier.setCity(null),
             ),
           if (filters.cnae != null)
             _FilterChip(
               label: 'CNAE: ${filters.cnae!.length > 12 ? '${filters.cnae!.substring(0, 12)}…' : filters.cnae!}',
-              onRemove: () => notifier.update((f) => f.copyWith(clearCnae: true)),
+              onRemove: () => notifier.setCnae(null),
             ),
           if (filters.radius != 5.0)
             _FilterChip(
               label: '${filters.radius.toInt()} km',
-              onRemove: () => notifier.update((f) => f.copyWith(radius: 5.0)),
+              onRemove: () => notifier.setRadius(5.0),
             ),
           const SizedBox(width: 4),
           GestureDetector(
-            onTap: () => notifier.state = MapFilters(),
+            onTap: () => notifier.clear(),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
