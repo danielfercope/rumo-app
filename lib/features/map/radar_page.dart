@@ -63,7 +63,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   Future<void> _loadIcons() async {
-    const int targetWidth = 100;
+    const int targetWidth = 35;
     try {
       final Uint8List libriaBytes =
           await _getBytesFromAsset('assets/libria.png', targetWidth);
