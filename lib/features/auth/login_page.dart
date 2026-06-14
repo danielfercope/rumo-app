@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:rumo_app/features/auth/register_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../map/providers/auth_provider.dart';
+import 'providers/auth_provider.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});

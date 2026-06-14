@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'providers/location_provider.dart';
 import 'providers/company_provider.dart';
 import 'providers/filter_provider.dart';
-import 'providers/profile_provider.dart';
+import '../auth/providers/profile_provider.dart';
 import 'services/tracking_service.dart';
 import 'models/company_model.dart';
 import '../company/add_company_modal.dart';
@@ -338,26 +339,37 @@ class _RadarPageState extends ConsumerState<RadarPage> {
           initialCameraPosition:
               CameraPosition(target: initialTarget, zoom: 14.0),
           mapType: _currentMapType,
-          myLocationEnabled: true,
+          myLocationEnabled: !kIsWeb,
           myLocationButtonEnabled: false,
           zoomControlsEnabled: false,
-          markers: mappableCompanies.map((company) {
-            return Marker(
-              markerId: MarkerId(company.id),
-              position:
-                  LatLng(company.latitude!, company.longitude!),
-              consumeTapEvents: true,
-              infoWindow: InfoWindow(
-                title:
-                    company.fantasyName ?? company.name ?? 'Empresa',
-                snippet: company.segment ??
-                    'CNAE: ${company.cnaePrincipal ?? "N/A"}',
-                onTap: () => _showCompanyDetails(company),
+          markers: {
+            ...mappableCompanies.map((company) {
+              return Marker(
+                markerId: MarkerId(company.id),
+                position:
+                    LatLng(company.latitude!, company.longitude!),
+                consumeTapEvents: true,
+                infoWindow: InfoWindow(
+                  title:
+                      company.fantasyName ?? company.name ?? 'Empresa',
+                  snippet: company.segment ??
+                      'CNAE: ${company.cnaePrincipal ?? "N/A"}',
+                  onTap: () => _showCompanyDetails(company),
+                ),
+                onTap: () => _handleMarkerTap(company),
+                icon: _getMarkerIcon(company),
+              );
+            }),
+            if (kIsWeb && position != null)
+              Marker(
+                markerId: const MarkerId('__my_location__'),
+                position: LatLng(position.latitude, position.longitude),
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueAzure),
+                infoWindow: const InfoWindow(title: 'Você está aqui'),
+                zIndex: 10,
               ),
-              onTap: () => _handleMarkerTap(company),
-              icon: _getMarkerIcon(company),
-            );
-          }).toSet(),
+          },
           circles: {
             Circle(
               circleId: const CircleId('radius_circle'),

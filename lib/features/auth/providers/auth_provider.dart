@@ -1,4 +1,4 @@
-import 'dart:io'; 
+import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../../core/app_config.dart';
 
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return Supabase.instance.client.auth.onAuthStateChange;
@@ -17,7 +17,6 @@ final authControllerProvider = Provider((ref) => AuthController());
 class AuthController {
   final _supabase = Supabase.instance.client;
 
-  // Função auxiliar para gerar nonce aleatório
   String _generateRandomString() {
     final random = Random.secure();
     return base64Url.encode(List<int>.generate(16, (_) => random.nextInt(256)));
@@ -25,16 +24,14 @@ class AuthController {
 
   Future<void> signInWithGoogle() async {
     try {
-      final webClientId = dotenv.env['SERVER_WEB_CLIENT_ID'];
-      final iosClientId = dotenv.env['CLIENT_ID'];
+      const webClientId = AppConfig.serverWebClientId;
+      const iosClientId = AppConfig.clientId;
 
-      if (webClientId == null) {
-        throw 'SERVER_WEB_CLIENT_ID não configurado no arquivo .env';
+      if (webClientId.isEmpty) {
+        throw 'SERVER_WEB_CLIENT_ID não configurado';
       }
 
-      // 1. Gerar um nonce bruto
       final rawNonce = _generateRandomString();
-      // 2. Criar o hash SHA256 do nonce (o que o Google espera no id_token)
       final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
 
       final googleSignIn = GoogleSignIn(
@@ -53,14 +50,11 @@ class AuthController {
         throw 'ID Token não encontrado.';
       }
 
-      // No Supabase, para o Google, tentamos passar o nonce bruto.
-      // Se o erro de mismatch persistir no iOS, o problema pode ser a configuração
-      // do "Web Client ID" no painel do Supabase.
       await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
         accessToken: accessToken,
-        nonce: rawNonce, // Tente enviar o rawNonce aqui
+        nonce: rawNonce,
       );
 
       final user = _supabase.auth.currentUser;
