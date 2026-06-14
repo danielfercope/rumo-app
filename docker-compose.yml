@@ -2,5 +2,5 @@ services:
   rumo-app:
     build: .
     ports:
-      - "80:80"
+      - "8504:80"
     restart: unless-stopped
