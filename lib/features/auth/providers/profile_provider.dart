@@ -27,7 +27,6 @@ class UserProfile {
   bool get isExecutivo => departamento == 'Executivo';
   bool get isGuest => nivelAcesso == 'guest';
 
-  // BDR (Pré-vendas), Gestão e Admin podem cadastrar empresas
   bool get canAddCompany =>
       departamento == 'Pré-vendas' ||
       departamento == 'Gestão' ||

@@ -1,0 +1,10 @@
+.git
+.dart_tool
+.idea
+.vscode
+android
+ios
+build
+test
+*.iml
+README.md

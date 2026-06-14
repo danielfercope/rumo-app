@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../providers/profile_provider.dart';
+import '../../auth/providers/profile_provider.dart';
 
 class TrackingService {
   final SupabaseClient _supabase;

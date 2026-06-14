@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -20,24 +20,16 @@ class RegistrationService {
   }
 
   Future<Map<String, dynamic>> fetchEmpresaAqui(String cnpj) async {
-    final token = dotenv.env['TOKEN_EMPRESA_AQUI']!;
-    final response = await http
-        .get(Uri.parse('https://www.empresaqui.com.br/api/$token/$cnpj'))
-        .timeout(const Duration(seconds: 15));
-
-    if (response.statusCode != 200) {
-      throw 'Erro na API EmpresaAqui: ${response.statusCode}';
-    }
-
-    final data = json.decode(response.body);
-    if (data is! Map<String, dynamic>) throw 'Resposta inválida da API';
-    if (data['cnpj'] == null) throw 'CNPJ não encontrado na base da EmpresaAqui';
-    return data;
+    final response = await _supabase.functions.invoke(
+      'empresa-aqui',
+      body: {'cnpj': cnpj},
+    );
+    return (response.data as Map<String, dynamic>);
   }
 
   Future<({double lat, double lon, String precisao})> geocodeAddress(
       String address) async {
-    final apiKey = dotenv.env['GOOGLE_API_KEY']!;
+    const apiKey = AppConfig.googleApiKey;
     final uri = Uri.parse(
         'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$apiKey');
 
@@ -141,7 +133,7 @@ class RegistrationService {
     String userEmail,
     String userName,
   ) async {
-    final webhookUrl = dotenv.env['URL_WEBHOOK_CRM']!;
+    const webhookUrl = AppConfig.urlWebhookCrm;
 
     final payload = {
       'assignments': [
