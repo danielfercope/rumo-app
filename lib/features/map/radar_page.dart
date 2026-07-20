@@ -172,6 +172,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   void _handleMarkerTap(Company company) {
+    if (kIsWeb) {
+      _showCompanyDetails(company);
+      return;
+    }
     final now = DateTime.now();
     if (_lastTappedMarkerId == company.id &&
         _lastTapTime != null &&

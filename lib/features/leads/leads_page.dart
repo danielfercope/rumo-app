@@ -216,7 +216,7 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) {
+                  (_, index) {
                     final company = filtered[index];
                     return CupertinoListTile(
                       title: Text(company.fantasyName ?? company.name ?? 'Empresa'),
@@ -225,7 +225,8 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
                       onTap: () {
                         showCupertinoModalPopup(
                           context: context,
-                          builder: (context) => CompanyDetailsModal(company: company),
+                          barrierDismissible: true,
+                          builder: (ctx) => CompanyDetailsModal(company: company),
                         );
                       },
                     );
