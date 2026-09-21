@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Análise estática e testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar o Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Instalar dependências do projeto
+        run: flutter pub get
+
+      - name: Verificar formatação do código
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Rodar análise estática (flutter analyze)
+        run: flutter analyze
+
+      - name: Rodar testes
+        run: flutter test
