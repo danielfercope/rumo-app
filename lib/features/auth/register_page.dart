@@ -5,7 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'providers/auth_provider.dart';
 
-const _departments = ['Executivo', 'Gestão', 'Pré-vendas', 'Administração Interna'];
+const _departments = [
+  'Executivo',
+  'Gestão',
+  'Pré-vendas',
+  'Administração Interna'
+];
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -133,7 +138,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   void _showDepartmentPicker() {
-    int tempIndex = _selectedDepartment != null ? _departments.indexOf(_selectedDepartment!) : 0;
+    int tempIndex = _selectedDepartment != null
+        ? _departments.indexOf(_selectedDepartment!)
+        : 0;
 
     showCupertinoModalPopup(
       context: context,
@@ -152,7 +159,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 CupertinoButton(
                   child: const Text('Confirmar'),
                   onPressed: () {
-                    setState(() => _selectedDepartment = _departments[tempIndex]);
+                    setState(
+                        () => _selectedDepartment = _departments[tempIndex]);
                     Navigator.pop(ctx);
                   },
                 ),
@@ -166,7 +174,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 ),
                 itemExtent: 40,
                 onSelectedItemChanged: (index) => tempIndex = index,
-                children: _departments.map((d) => Center(child: Text(d))).toList(),
+                children:
+                    _departments.map((d) => Center(child: Text(d))).toList(),
               ),
             ),
           ],
@@ -288,7 +297,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         child: Text(
                           _selectedDepartment ?? 'Selecione um departamento',
                           style: TextStyle(
-                            color: _selectedDepartment != null ? CupertinoColors.label : CupertinoColors.placeholderText,
+                            color: _selectedDepartment != null
+                                ? CupertinoColors.label
+                                : CupertinoColors.placeholderText,
                           ),
                         ),
                       ),
@@ -307,7 +318,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 placeholder: 'Senha',
                 icon: CupertinoIcons.lock,
                 obscure: _obscurePassword,
-                onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                onToggleObscure: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
               const SizedBox(height: 12),
               _buildTextField(
@@ -316,7 +328,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 icon: CupertinoIcons.lock_shield,
                 obscure: _obscureConfirm,
                 textInputAction: TextInputAction.done,
-                onToggleObscure: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                onToggleObscure: () =>
+                    setState(() => _obscureConfirm = !_obscureConfirm),
               ),
               const SizedBox(height: 32),
               SizedBox(

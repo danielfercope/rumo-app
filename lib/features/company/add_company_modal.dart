@@ -42,7 +42,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
   String? _regimeTributario;
   String? _analises;
   String? _validadeEcac;
-  String? _setorEmpresaKey;   // código HubSpot
+  String? _setorEmpresaKey; // código HubSpot
   String? _setorEmpresaLabel; // nome em PT para exibição
   String? _departamento;
   String? _tipoLead;
@@ -107,8 +107,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
 
     final position = ref.read(locationProvider).value;
     if (position == null) {
-      setState(() =>
-          _errorMessage = 'Localização não disponível. Habilite o GPS e tente novamente.');
+      setState(() => _errorMessage =
+          'Localização não disponível. Habilite o GPS e tente novamente.');
       return;
     }
 
@@ -141,8 +141,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
       );
 
       if (!within) {
-        setState(() =>
-            _errorMessage = 'Bloqueado: você está a mais de 2 km da empresa. Aproxime-se para cadastrá-la.');
+        setState(() => _errorMessage =
+            'Bloqueado: você está a mais de 2 km da empresa. Aproxime-se para cadastrá-la.');
         return;
       }
 
@@ -163,12 +163,16 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
   Future<void> _submit() async {
     // Valida campos obrigatórios
     final campos = <String, String?>{
-      'Primeiro nome': _primeiroNomeCtrl.text.isEmpty ? null : _primeiroNomeCtrl.text,
+      'Primeiro nome':
+          _primeiroNomeCtrl.text.isEmpty ? null : _primeiroNomeCtrl.text,
       'Sobrenome': _sobrenomeCtrl.text.isEmpty ? null : _sobrenomeCtrl.text,
       'Email do contato': _emailCtrl.text.isEmpty ? null : _emailCtrl.text,
-      'Telefone do sócio': _telefoneCtrl.text.isEmpty ? null : _telefoneCtrl.text,
+      'Telefone do sócio':
+          _telefoneCtrl.text.isEmpty ? null : _telefoneCtrl.text,
       'Nome do sócio': _nomeSocioCtrl.text.isEmpty ? null : _nomeSocioCtrl.text,
-      'Nome do proprietário': _nomeProprietarioCtrl.text.isEmpty ? null : _nomeProprietarioCtrl.text,
+      'Nome do proprietário': _nomeProprietarioCtrl.text.isEmpty
+          ? null
+          : _nomeProprietarioCtrl.text,
       'Procuração': _procuracao,
       'Possui débitos': _possuiDebitos,
       'Valor da dívida': _valorDivida,
@@ -181,7 +185,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
       'Prioridade': _prioridadeKey,
     };
 
-    final ausentes = campos.entries.where((e) => e.value == null).map((e) => e.key).toList();
+    final ausentes =
+        campos.entries.where((e) => e.value == null).map((e) => e.key).toList();
     if (ausentes.isNotEmpty) {
       setState(() => _errorMessage = 'Preencha: ${ausentes.join(', ')}');
       return;
@@ -196,7 +201,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
       final service = ref.read(registrationServiceProvider);
       final profile = ref.read(profileProvider).value;
 
-      await service.saveCompany(_dadosApi!, _empresaLat!, _empresaLon!, _precisao!);
+      await service.saveCompany(
+          _dadosApi!, _empresaLat!, _empresaLon!, _precisao!);
 
       final dadosForm = {
         'primeiro_nome': _primeiroNomeCtrl.text,
@@ -248,7 +254,9 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           if (_errorMessage != null) _buildError(),
           Expanded(
             child: _loading
-                ? const Center(child: CupertinoActivityIndicator(color: CupertinoColors.white))
+                ? const Center(
+                    child: CupertinoActivityIndicator(
+                        color: CupertinoColors.white))
                 : _step == 1
                     ? _buildStep1()
                     : _buildStep2(),
@@ -294,13 +302,15 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: CupertinoColors.systemRed.withOpacity(0.15),
+          color: CupertinoColors.systemRed.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: CupertinoColors.systemRed.withOpacity(0.5)),
+          border: Border.all(
+              color: CupertinoColors.systemRed.withValues(alpha: 0.5)),
         ),
         child: Text(
           _errorMessage!,
-          style: const TextStyle(color: CupertinoColors.systemRed, fontSize: 13),
+          style:
+              const TextStyle(color: CupertinoColors.systemRed, fontSize: 13),
         ),
       );
 
@@ -320,7 +330,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
             CupertinoTextField(
               controller: _cnpjController,
               placeholder: 'Somente números (14 dígitos)',
-              placeholderStyle: const TextStyle(color: CupertinoColors.systemGrey2),
+              placeholderStyle:
+                  const TextStyle(color: CupertinoColors.systemGrey2),
               style: const TextStyle(color: CupertinoColors.white),
               keyboardType: TextInputType.number,
               inputFormatters: [
@@ -345,8 +356,9 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
   // ─── STEP 2 ────────────────────────────────────────────────────────────────
 
   Widget _buildStep2() {
-    final nomeEmpresa =
-        _dadosApi?['fantasia'] as String? ?? _dadosApi?['razao'] as String? ?? '';
+    final nomeEmpresa = _dadosApi?['fantasia'] as String? ??
+        _dadosApi?['razao'] as String? ??
+        '';
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       children: [
@@ -355,10 +367,10 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           padding: const EdgeInsets.all(12),
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: CupertinoColors.activeBlue.withOpacity(0.1),
+            color: CupertinoColors.activeBlue.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-                color: CupertinoColors.activeBlue.withOpacity(0.3)),
+                color: CupertinoColors.activeBlue.withValues(alpha: 0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,8 +390,10 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
         _textField('Primeiro nome', _primeiroNomeCtrl),
         _textField('Nome completo', _nomeCompletoCtrl),
         _textField('Sobrenome', _sobrenomeCtrl),
-        _textField('Email do contato', _emailCtrl, keyboardType: TextInputType.emailAddress),
-        _textField('Telefone do sócio', _telefoneCtrl, keyboardType: TextInputType.phone),
+        _textField('Email do contato', _emailCtrl,
+            keyboardType: TextInputType.emailAddress),
+        _textField('Telefone do sócio', _telefoneCtrl,
+            keyboardType: TextInputType.phone),
         _textField('Nome do sócio principal', _nomeSocioCtrl),
         _textField('Nome do proprietário', _nomeProprietarioCtrl),
 
@@ -510,7 +524,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           ),
           GestureDetector(
             onTap: () => _showSearchSheet(label, options, onChanged),
-            child: _dropdownContainer(current ?? 'Selecione...', current != null),
+            child:
+                _dropdownContainer(current ?? 'Selecione...', current != null),
           ),
         ],
       );
@@ -534,7 +549,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           ),
           GestureDetector(
             onTap: () => _showActionSheet(label, options, onChanged),
-            child: _dropdownContainer(current ?? 'Selecione...', current != null),
+            child:
+                _dropdownContainer(current ?? 'Selecione...', current != null),
           ),
         ],
       );
@@ -584,7 +600,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           ),
           GestureDetector(
             onTap: () => _showDatePicker(onChanged),
-            child: _dropdownContainer(current ?? 'Selecione a data', current != null),
+            child: _dropdownContainer(
+                current ?? 'Selecione a data', current != null),
           ),
         ],
       );
@@ -739,9 +756,8 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
         options: labels,
         onSelected: (label) {
           if (label != null) {
-            final key = kSetores.entries
-                .firstWhere((e) => e.value == label)
-                .key;
+            final key =
+                kSetores.entries.firstWhere((e) => e.value == label).key;
             setState(() {
               _setorEmpresaKey = key;
               _setorEmpresaLabel = label;

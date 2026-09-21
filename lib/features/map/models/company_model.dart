@@ -7,7 +7,7 @@ class Company {
   final double? latitude;
   final double? longitude;
   final bool? isClient;
-  
+
   // Novos campos para o modal detalhado
   final String? cnpj;
   final String? cnaePrincipal;
@@ -23,7 +23,7 @@ class Company {
   final String? saudeTributaria;
   final String? scorePropensao;
   final String? produto;
-  
+
   // Campo calculado localmente
   double? distance;
 

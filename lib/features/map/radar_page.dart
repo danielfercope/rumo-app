@@ -54,8 +54,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
   Future<Uint8List> _getBytesFromAsset(String path, int width) async {
     ByteData data = await rootBundle.load(path);
-    ui.Codec codec = await ui.instantiateImageCodec(
-        data.buffer.asUint8List(),
+    ui.Codec codec = await ui.instantiateImageCodec(data.buffer.asUint8List(),
         targetWidth: width);
     ui.FrameInfo fi = await codec.getNextFrame();
     return (await fi.image.toByteData(format: ui.ImageByteFormat.png))!
@@ -75,9 +74,9 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
       if (mounted) {
         setState(() {
-          _iconLibria = BitmapDescriptor.fromBytes(libriaBytes);
-          _iconSaveId = BitmapDescriptor.fromBytes(saveIdBytes);
-          _iconOtherClient = BitmapDescriptor.fromBytes(otherClientBytes);
+          _iconLibria = BitmapDescriptor.bytes(libriaBytes);
+          _iconSaveId = BitmapDescriptor.bytes(saveIdBytes);
+          _iconOtherClient = BitmapDescriptor.bytes(otherClientBytes);
         });
       }
     } catch (e) {
@@ -89,16 +88,13 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     if (company.isClient == true) {
       if (company.produto == 'Libr.ia') {
         return _iconLibria ??
-            BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueAzure);
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
       } else if (company.produto == 'SaveID') {
         return _iconSaveId ??
-            BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueAzure);
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
       } else {
         return _iconOtherClient ??
-            BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueAzure);
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
       }
     } else {
       return BitmapDescriptor.defaultMarkerWithHue(200.0);
@@ -158,9 +154,8 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
   void _toggleMapType() {
     setState(() {
-      _currentMapType = _currentMapType == MapType.normal
-          ? MapType.hybrid
-          : MapType.normal;
+      _currentMapType =
+          _currentMapType == MapType.normal ? MapType.hybrid : MapType.normal;
     });
   }
 
@@ -179,8 +174,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final now = DateTime.now();
     if (_lastTappedMarkerId == company.id &&
         _lastTapTime != null &&
-        now.difference(_lastTapTime!) <
-            const Duration(milliseconds: 500)) {
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 500)) {
       _showCompanyDetails(company);
       _lastTapTime = null;
       _lastTappedMarkerId = null;
@@ -228,8 +222,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
       barrierDismissible: true,
       builder: (ctx) => CupertinoAlertDialog(
         title: const Text('Empresa cadastrada!'),
-        content:
-            const Text('Os dados foram salvos e enviados ao CRM.'),
+        content: const Text('Os dados foram salvos e enviados ao CRM.'),
         actions: [
           CupertinoDialogAction(
             child: const Text('OK'),
@@ -266,26 +259,21 @@ class _RadarPageState extends ConsumerState<RadarPage> {
           data: (companies) => _buildContent(
               position, companies, filters.radius, uiState,
               profile: profileAsync.value),
-          loading: () =>
-              const Center(child: CupertinoActivityIndicator()),
+          loading: () => const Center(child: CupertinoActivityIndicator()),
           error: (error, stack) => _buildContent(
               position, [], filters.radius, uiState,
-              errorMessage:
-                  'Erro ao buscar empresas. Verifique sua conexão.',
+              errorMessage: 'Erro ao buscar empresas. Verifique sua conexão.',
               profile: profileAsync.value),
         ),
-        loading: () =>
-            const Center(child: CupertinoActivityIndicator()),
+        loading: () => const Center(child: CupertinoActivityIndicator()),
         error: (error, stack) => companiesAsync.when(
           data: (companies) => _buildContent(
               null, companies, filters.radius, uiState,
               profile: profileAsync.value),
-          loading: () =>
-              const Center(child: CupertinoActivityIndicator()),
+          loading: () => const Center(child: CupertinoActivityIndicator()),
           error: (error, stack) => _buildContent(
               null, [], filters.radius, uiState,
-              errorMessage:
-                  'Erro ao buscar empresas. Verifique sua conexão.',
+              errorMessage: 'Erro ao buscar empresas. Verifique sua conexão.',
               profile: profileAsync.value),
         ),
       ),
@@ -305,13 +293,11 @@ class _RadarPageState extends ConsumerState<RadarPage> {
         : _defaultCenter;
 
     final List<Company> sorted = List.from(companies)
-      ..sort((a, b) =>
-          (a.distance ?? 999999).compareTo(b.distance ?? 999999));
+      ..sort((a, b) => (a.distance ?? 999999).compareTo(b.distance ?? 999999));
     final displayCompanies = sorted.take(3).toList();
 
-    final mappableCompanies = sorted
-        .where((c) => c.latitude != null && c.longitude != null)
-        .toList();
+    final mappableCompanies =
+        sorted.where((c) => c.latitude != null && c.longitude != null).toList();
 
     if (_pendingAutoFit && mappableCompanies.isNotEmpty) {
       _pendingAutoFit = false;
@@ -324,8 +310,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
       });
     } else if (position != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _syncCameraToPosition(
-            LatLng(position.latitude, position.longitude));
+        _syncCameraToPosition(LatLng(position.latitude, position.longitude));
       });
     }
 
@@ -350,12 +335,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             ...mappableCompanies.map((company) {
               return Marker(
                 markerId: MarkerId(company.id),
-                position:
-                    LatLng(company.latitude!, company.longitude!),
+                position: LatLng(company.latitude!, company.longitude!),
                 consumeTapEvents: true,
                 infoWindow: InfoWindow(
-                  title:
-                      company.fantasyName ?? company.name ?? 'Empresa',
+                  title: company.fantasyName ?? company.name ?? 'Empresa',
                   snippet: company.segment ??
                       'CNAE: ${company.cnaePrincipal ?? "N/A"}',
                   onTap: () => _showCompanyDetails(company),
@@ -379,10 +362,8 @@ class _RadarPageState extends ConsumerState<RadarPage> {
               circleId: const CircleId('radius_circle'),
               center: initialTarget,
               radius: radius * 1000,
-              fillColor:
-                  CupertinoColors.activeBlue.withOpacity(0.05),
-              strokeColor:
-                  CupertinoColors.activeBlue.withOpacity(0.2),
+              fillColor: CupertinoColors.activeBlue.withValues(alpha: 0.05),
+              strokeColor: CupertinoColors.activeBlue.withValues(alpha: 0.2),
               strokeWidth: 1,
             ),
           },
@@ -397,7 +378,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             children: [
               CupertinoButton(
                 padding: const EdgeInsets.all(12),
-                color: CupertinoColors.white.withOpacity(0.9),
+                color: CupertinoColors.white.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(30),
                 onPressed: _toggleMapType,
                 child: const Icon(CupertinoIcons.layers_alt,
@@ -406,19 +387,17 @@ class _RadarPageState extends ConsumerState<RadarPage> {
               const SizedBox(height: 8),
               CupertinoButton(
                 padding: const EdgeInsets.all(12),
-                color: CupertinoColors.white.withOpacity(0.9),
+                color: CupertinoColors.white.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(30),
                 onPressed: _showFilters,
-                child: const Icon(
-                    CupertinoIcons.slider_horizontal_3,
+                child: const Icon(CupertinoIcons.slider_horizontal_3,
                     color: CupertinoColors.activeBlue),
               ),
               const SizedBox(height: 8),
               if (profile?.canAddCompany == true && position != null)
                 CupertinoButton(
                   padding: const EdgeInsets.all(12),
-                  color:
-                      CupertinoColors.systemYellow.withOpacity(0.95),
+                  color: CupertinoColors.systemYellow.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(30),
                   onPressed: _openAddCompany,
                   child: const Icon(CupertinoIcons.plus,
@@ -432,8 +411,8 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                     .toggleCountExpanded(),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: mappableCount > 0
                         ? CupertinoColors.activeBlue
@@ -441,8 +420,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color:
-                            CupertinoColors.black.withOpacity(0.2),
+                        color: CupertinoColors.black.withValues(alpha: 0.2),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
@@ -466,13 +444,12 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                 const SizedBox(height: 8),
                 CupertinoButton(
                   padding: const EdgeInsets.all(12),
-                  color: CupertinoColors.white.withOpacity(0.9),
+                  color: CupertinoColors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(30),
                   onPressed: () => _fitToMarkers(
                       mappableCompanies,
                       position != null
-                          ? LatLng(position.latitude,
-                              position.longitude)
+                          ? LatLng(position.latitude, position.longitude)
                           : null),
                   child: const Icon(CupertinoIcons.map_fill,
                       color: CupertinoColors.activeBlue),
@@ -492,7 +469,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             children: [
               CupertinoButton(
                 padding: const EdgeInsets.all(12),
-                color: CupertinoColors.white.withOpacity(0.9),
+                color: CupertinoColors.white.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(30),
                 onPressed: _centerOnUser,
                 child: Icon(
@@ -506,10 +483,9 @@ class _RadarPageState extends ConsumerState<RadarPage> {
               ),
               const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: CupertinoColors.black.withOpacity(0.6),
+                  color: CupertinoColors.black.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -536,11 +512,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
               if (!isListVisible && displayCompanies.isNotEmpty)
                 CupertinoButton(
                   padding: const EdgeInsets.all(12),
-                  color: CupertinoColors.white.withOpacity(0.9),
+                  color: CupertinoColors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(30),
-                  onPressed: () => ref
-                      .read(radarViewModelProvider.notifier)
-                      .showList(),
+                  onPressed: () =>
+                      ref.read(radarViewModelProvider.notifier).showList(),
                   child: const Icon(CupertinoIcons.list_bullet,
                       color: CupertinoColors.activeBlue),
                 ),
@@ -554,11 +529,9 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             left: 16,
             right: 16,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color:
-                    CupertinoColors.systemRed.withOpacity(0.92),
+                color: CupertinoColors.systemRed.withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -587,17 +560,16 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                       .read(radarViewModelProvider.notifier)
                       .hideBottomList(),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color:
-                          CupertinoColors.activeBlue.withOpacity(0.9),
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(12)),
+                      color: CupertinoColors.activeBlue.withValues(alpha: 0.9),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(12)),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
+                      children: [
                         Text(
                           'As 3 empresas mais próximas de você',
                           style: TextStyle(
@@ -619,8 +591,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                       child: GestureDetector(
                         onTap: () => _showCompanyDetails(company),
                         child: Container(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 2),
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: CupertinoColors.white,
@@ -631,13 +602,12 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                             boxShadow: [
                               BoxShadow(
                                   color: CupertinoColors.black
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   blurRadius: 4)
                             ],
                           ),
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
@@ -653,14 +623,12 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                               Text(company.segment ?? 'N/A',
                                   style: const TextStyle(
                                       fontSize: 8,
-                                      color:
-                                          CupertinoColors.activeBlue,
+                                      color: CupertinoColors.activeBlue,
                                       fontWeight: FontWeight.w500),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis),
                               const SizedBox(height: 2),
-                              Text(
-                                  '${company.distance?.toStringAsFixed(1)}km',
+                              Text('${company.distance?.toStringAsFixed(1)}km',
                                   style: const TextStyle(
                                       fontSize: 9,
                                       color: CupertinoColors.black,

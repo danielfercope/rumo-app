@@ -1,10 +1,20 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:rumo_app/features/auth/register_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'providers/auth_provider.dart';
+
+// Logo "G" do Google embutido localmente para não depender de uma URL externa
+// (o botão de login quebrava sem rede, e falhava em testes de widget).
+const _googleLogoSvg = '''
+<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <path d="M19.6 10.23c0-.82-.1-1.42-.25-2.05H10v3.72h5.5c-.15.96-.74 2.31-2.04 3.22v2.45h3.16c1.89-1.73 2.98-4.3 2.98-7.34z" fill="#4285F4"/>
+  <path d="M10 20c2.7 0 4.96-.89 6.62-2.42l-3.16-2.45c-.87.59-2 .94-3.46.94-2.66 0-4.91-1.79-5.71-4.2H1.03v2.53A9.99 9.99 0 0 0 10 20z" fill="#34A853"/>
+  <path d="M4.29 11.87A5.99 5.99 0 0 1 3.98 10c0-.65.11-1.28.31-1.87V5.6H1.03A9.99 9.99 0 0 0 0 10c0 1.61.39 3.14 1.03 4.4l3.26-2.53z" fill="#FBBC05"/>
+  <path d="M10 3.96c1.47 0 2.79.51 3.82 1.5l2.87-2.87C14.95.99 12.7 0 10 0 6.09 0 2.71 2.24 1.03 5.6l3.26 2.53C5.09 5.72 7.34 3.96 10 3.96z" fill="#EA4335"/>
+</svg>
+''';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -114,10 +124,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   placeholder: 'E-mail',
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   prefix: const Padding(
                     padding: EdgeInsets.only(left: 12),
-                    child: Icon(CupertinoIcons.mail, color: CupertinoColors.systemGrey, size: 20),
+                    child: Icon(CupertinoIcons.mail,
+                        color: CupertinoColors.systemGrey, size: 20),
                   ),
                   decoration: BoxDecoration(
                     color: CupertinoColors.darkBackgroundGray,
@@ -131,17 +143,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   controller: _passwordController,
                   placeholder: 'Senha',
                   obscureText: _obscurePassword,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   prefix: const Padding(
                     padding: EdgeInsets.only(left: 12),
-                    child: Icon(CupertinoIcons.lock, color: CupertinoColors.systemGrey, size: 20),
+                    child: Icon(CupertinoIcons.lock,
+                        color: CupertinoColors.systemGrey, size: 20),
                   ),
                   suffix: GestureDetector(
-                    onTap: () => setState(() => _obscurePassword = !_obscurePassword),
+                    onTap: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
                     child: Padding(
                       padding: const EdgeInsets.only(right: 12),
                       child: Icon(
-                        _obscurePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
+                        _obscurePassword
+                            ? CupertinoIcons.eye
+                            : CupertinoIcons.eye_slash,
                         color: CupertinoColors.systemGrey,
                         size: 20,
                       ),
@@ -158,15 +175,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 SizedBox(
                   width: double.infinity,
                   child: CupertinoButton.filled(
-                    onPressed: _isLoading || _isGoogleLoading ? null : _handleLogin,
+                    onPressed:
+                        _isLoading || _isGoogleLoading ? null : _handleLogin,
                     child: _isLoading
-                        ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+                        ? const CupertinoActivityIndicator(
+                            color: CupertinoColors.white)
                         : const Text('Entrar'),
                   ),
                 ),
-                
+
                 const SizedBox(height: 16),
-                const Text('ou', style: TextStyle(color: CupertinoColors.systemGrey)),
+                const Text('ou',
+                    style: TextStyle(color: CupertinoColors.systemGrey)),
                 const SizedBox(height: 16),
 
                 // Botão de Login com Google usando flutter_svg
@@ -174,15 +194,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   width: double.infinity,
                   child: CupertinoButton(
                     color: CupertinoColors.white,
-                    onPressed: _isLoading || _isGoogleLoading ? null : _handleGoogleLogin,
+                    onPressed: _isLoading || _isGoogleLoading
+                        ? null
+                        : _handleGoogleLogin,
                     padding: EdgeInsets.zero,
                     child: _isGoogleLoading
                         ? const CupertinoActivityIndicator()
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              SvgPicture.network(
-                                'https://authjs.dev/img/providers/google.svg',
+                              SvgPicture.string(
+                                _googleLogoSvg,
                                 height: 20,
                               ),
                               const SizedBox(width: 12),

@@ -27,7 +27,8 @@ class TrackingService {
   Future<void> _save(UserProfile profile) async {
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
       );
       final now = DateTime.now().toIso8601String();
 

@@ -72,17 +72,13 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                   children: [
                     _buildRadiusSection(),
                     const SizedBox(height: 24),
-                    _buildSearchableField(
-                        'Segmento',
-                        _tempFilters.segment,
+                    _buildSearchableField('Segmento', _tempFilters.segment,
                         (options['segments'] as List? ?? []).cast<String>(),
                         (v) {
                       setState(() => _tempFilters = _tempFilters.copyWith(
                           segment: v, clearSegment: v == null));
                     }),
-                    _buildSearchableField(
-                        'Produto',
-                        _tempFilters.product,
+                    _buildSearchableField('Produto', _tempFilters.product,
                         (options['products'] as List? ?? []).cast<String>(),
                         (v) {
                       setState(() => _tempFilters = _tempFilters.copyWith(
@@ -101,12 +97,12 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                       thumbColor: CupertinoColors.activeBlue,
                       groupValue: _tempFilters.type ?? 'all',
                       children: {
-                        'all': _segmentedText(
-                            'Todos', _tempFilters.type == null),
+                        'all':
+                            _segmentedText('Todos', _tempFilters.type == null),
                         'client': _segmentedText(
                             'Cliente', _tempFilters.type == 'client'),
-                        'lead': _segmentedText(
-                            'Lead', _tempFilters.type == 'lead'),
+                        'lead':
+                            _segmentedText('Lead', _tempFilters.type == 'lead'),
                       },
                       onValueChanged: (v) {
                         setState(() => _tempFilters = _tempFilters.copyWith(
@@ -114,30 +110,24 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                             clearType: v == 'all'));
                       },
                     ),
-                    _buildSearchableField(
-                        'Estado (UF)',
-                        _tempFilters.state,
-                        (options['states'] as List? ?? []).cast<String>(),
-                        (v) {
+                    _buildSearchableField('Estado (UF)', _tempFilters.state,
+                        (options['states'] as List? ?? []).cast<String>(), (v) {
                       setState(() => _tempFilters = _tempFilters.copyWith(
                           state: v, clearState: v == null));
                     }),
                     _buildSearchableField(
                         'Cidade', _tempFilters.city, citiesForState, (v) {
-                      setState(() => _tempFilters = _tempFilters.copyWith(
-                          city: v, clearCity: v == null));
+                      setState(() => _tempFilters =
+                          _tempFilters.copyWith(city: v, clearCity: v == null));
                     }),
-                    _buildSearchableField(
-                        'CNAE',
-                        _tempFilters.cnae,
-                        (options['cnaes'] as List? ?? []).cast<String>(),
-                        (v) {
-                      setState(() => _tempFilters = _tempFilters.copyWith(
-                          cnae: v, clearCnae: v == null));
+                    _buildSearchableField('CNAE', _tempFilters.cnae,
+                        (options['cnaes'] as List? ?? []).cast<String>(), (v) {
+                      setState(() => _tempFilters =
+                          _tempFilters.copyWith(cnae: v, clearCnae: v == null));
                     }),
                     const SizedBox(height: 40),
                     CupertinoButton(
-                      color: CupertinoColors.systemRed.withOpacity(0.2),
+                      color: CupertinoColors.systemRed.withValues(alpha: 0.2),
                       onPressed: () {
                         setState(() => _tempFilters = MapFilters());
                       },
@@ -150,8 +140,8 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                 );
               },
               loading: () => const Center(
-                  child: CupertinoActivityIndicator(
-                      color: CupertinoColors.white)),
+                  child:
+                      CupertinoActivityIndicator(color: CupertinoColors.white)),
               error: (e, s) => const Center(
                   child: Text('Erro ao carregar opções',
                       style: TextStyle(color: CupertinoColors.white))),
@@ -202,8 +192,7 @@ class _FilterModalState extends ConsumerState<FilterModal> {
               color: isSelected
                   ? CupertinoColors.white
                   : CupertinoColors.systemGrey,
-              fontWeight:
-                  isSelected ? FontWeight.bold : FontWeight.normal)),
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
     );
   }
 
@@ -223,13 +212,12 @@ class _FilterModalState extends ConsumerState<FilterModal> {
         GestureDetector(
           onTap: () => _showSearchPicker(label, options, onSelected),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: CupertinoColors.darkBackgroundGray,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: CupertinoColors.systemGrey.withOpacity(0.2)),
+                  color: CupertinoColors.systemGrey.withValues(alpha: 0.2)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -353,8 +341,7 @@ class _SearchSelectionSheetState extends State<SearchSelectionSheet> {
                   final option = _filteredOptions[index];
                   return _OptionTile(
                     title: Text(option,
-                        style:
-                            const TextStyle(color: CupertinoColors.white)),
+                        style: const TextStyle(color: CupertinoColors.white)),
                     onTap: () {
                       widget.onSelected(option);
                       Navigator.pop(context);
@@ -374,6 +361,7 @@ class _OptionTile extends StatelessWidget {
   final Widget title;
   final VoidCallback onTap;
 
+  // ignore: unused_element_parameter
   const _OptionTile({super.key, required this.title, required this.onTap});
 
   @override
