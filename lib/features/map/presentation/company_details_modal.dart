@@ -59,8 +59,7 @@ class CompanyDetailsModal extends ConsumerWidget {
               padding: const EdgeInsets.all(20),
               children: [
                 GestureDetector(
-                  onTap: () => _copyToClipboard(
-                      context,
+                  onTap: () => _copyToClipboard(context,
                       company.fantasyName ?? company.name ?? 'Empresa'),
                   child: Row(
                     children: [
@@ -80,8 +79,7 @@ class CompanyDetailsModal extends ConsumerWidget {
                 if (company.fantasyName != null && company.name != null)
                   Text(company.name!,
                       style: const TextStyle(
-                          fontSize: 14,
-                          color: CupertinoColors.systemGrey)),
+                          fontSize: 14, color: CupertinoColors.systemGrey)),
                 if (company.cnpj != null && company.cnpj!.isNotEmpty)
                   Text(
                     formatCnpj(company.cnpj!),
@@ -106,7 +104,7 @@ class CompanyDetailsModal extends ConsumerWidget {
                             horizontal: 12, vertical: 6),
                         color: CupertinoColors.activeBlue,
                         borderRadius: BorderRadius.circular(20),
-                        minSize: 0,
+                        minimumSize: Size.zero,
                         onPressed: () =>
                             _openRoute(company.latitude!, company.longitude!),
                         child: const Row(
@@ -133,16 +131,15 @@ class CompanyDetailsModal extends ConsumerWidget {
                 _buildSection(context, 'Contatos e Endereço', [
                   _tile(context, 'Telefone', company.telefone,
                       CupertinoIcons.phone),
-                  _tile(context, 'Email', company.email,
-                      CupertinoIcons.mail),
+                  _tile(context, 'Email', company.email, CupertinoIcons.mail),
                   _tile(context, 'Endereço', company.address,
                       CupertinoIcons.location),
                 ]),
                 _buildCrmContacts(contactsAsync),
                 if (company.isClient != true)
                   _buildSection(context, 'Dados de Crédito e Dívida', [
-                    _tile(context, 'Saúde Tributária',
-                        company.saudeTributaria, CupertinoIcons.chart_bar),
+                    _tile(context, 'Saúde Tributária', company.saudeTributaria,
+                        CupertinoIcons.chart_bar),
                     _tile(context, 'Dívida Ativa', company.dividaAtiva,
                         CupertinoIcons.exclamationmark_shield),
                     _tile(context, 'Score', company.scorePropensao,
@@ -151,8 +148,8 @@ class CompanyDetailsModal extends ConsumerWidget {
                 _buildSection(context, 'Informações', [
                   _tile(context, 'CNAE', company.cnaePrincipal,
                       CupertinoIcons.doc_text),
-                  _tile(context, 'Natureza Jurídica',
-                      company.naturezaJuridica, CupertinoIcons.briefcase),
+                  _tile(context, 'Natureza Jurídica', company.naturezaJuridica,
+                      CupertinoIcons.briefcase),
                 ]),
                 _buildActivities(context, notesAsync),
                 const SizedBox(height: 20),
@@ -165,8 +162,8 @@ class CompanyDetailsModal extends ConsumerWidget {
   }
 
   Future<void> _openRoute(double lat, double lng) async {
-    final googleMaps = Uri.parse(
-        'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving');
+    final googleMaps =
+        Uri.parse('comgooglemaps://?daddr=$lat,$lng&directionsmode=driving');
     final appleMaps = Uri.parse('maps://?daddr=$lat,$lng&dirflg=d');
     final webMaps = Uri.parse(
         'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
@@ -209,8 +206,7 @@ class CompanyDetailsModal extends ConsumerWidget {
               _noteError('Não foi possível carregar o histórico do CRM.'),
           data: (notes) {
             if (company.cnpj == null || company.cnpj!.isEmpty) {
-              return _noteEmpty(
-                  'CNPJ não disponível para busca no CRM.');
+              return _noteEmpty('CNPJ não disponível para busca no CRM.');
             }
             if (notes.isEmpty) {
               return _noteEmpty(
@@ -260,8 +256,8 @@ class CompanyDetailsModal extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
           Text(note.body,
-              style: const TextStyle(
-                  fontSize: 13, color: CupertinoColors.black)),
+              style:
+                  const TextStyle(fontSize: 13, color: CupertinoColors.black)),
         ],
       ),
     );
@@ -293,8 +289,7 @@ class CompanyDetailsModal extends ConsumerWidget {
         context: context,
         builder: (context) => CupertinoAlertDialog(
           title: const Text('Copiado'),
-          content:
-              Text('"$text" copiado para a área de transferência.'),
+          content: Text('"$text" copiado para a área de transferência.'),
           actions: [
             CupertinoDialogAction(
               child: const Text('OK'),
@@ -304,13 +299,14 @@ class CompanyDetailsModal extends ConsumerWidget {
         ),
       );
       Future.delayed(const Duration(seconds: 1), () {
-        if (Navigator.canPop(context)) Navigator.pop(context);
+        if (context.mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
       });
     }
   }
 
-  Widget _buildCrmContacts(
-      AsyncValue<List<HubSpotContact>> contactsAsync) {
+  Widget _buildCrmContacts(AsyncValue<List<HubSpotContact>> contactsAsync) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -340,8 +336,7 @@ class CompanyDetailsModal extends ConsumerWidget {
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Text(
               'Não foi possível carregar os contatos do CRM.',
-              style: TextStyle(
-                  fontSize: 13, color: CupertinoColors.systemRed),
+              style: TextStyle(fontSize: 13, color: CupertinoColors.systemRed),
             ),
           ),
           data: (contacts) {
@@ -355,8 +350,7 @@ class CompanyDetailsModal extends ConsumerWidget {
                 ),
               );
             }
-            return Column(
-                children: contacts.map(_contactCard).toList());
+            return Column(children: contacts.map(_contactCard).toList());
           },
         ),
         const SizedBox(height: 10),
@@ -387,17 +381,14 @@ class CompanyDetailsModal extends ConsumerWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: CupertinoColors.black)),
-                if (contact.telefone != null &&
-                    contact.telefone!.isNotEmpty)
+                if (contact.telefone != null && contact.telefone!.isNotEmpty)
                   Text(contact.telefone!,
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: CupertinoColors.systemGrey)),
+                          fontSize: 12, color: CupertinoColors.systemGrey)),
                 if (contact.email != null && contact.email!.isNotEmpty)
                   Text(contact.email!,
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: CupertinoColors.systemGrey)),
+                          fontSize: 12, color: CupertinoColors.systemGrey)),
               ],
             ),
           ),
@@ -452,8 +443,8 @@ class CompanyDetailsModal extends ConsumerWidget {
         child: Column(children: [
       Icon(i, color: CupertinoColors.activeBlue, size: 20),
       Text(l,
-          style: const TextStyle(
-              fontSize: 10, color: CupertinoColors.systemGrey)),
+          style:
+              const TextStyle(fontSize: 10, color: CupertinoColors.systemGrey)),
       Text(v ?? 'N/A',
           style: const TextStyle(
               fontSize: 12,
@@ -465,8 +456,7 @@ class CompanyDetailsModal extends ConsumerWidget {
     ]));
   }
 
-  Widget _buildSection(
-      BuildContext context, String t, List<Widget> children) {
+  Widget _buildSection(BuildContext context, String t, List<Widget> children) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -499,12 +489,10 @@ class CompanyDetailsModal extends ConsumerWidget {
                   children: [
                 Text(l,
                     style: const TextStyle(
-                        fontSize: 10,
-                        color: CupertinoColors.systemGrey)),
+                        fontSize: 10, color: CupertinoColors.systemGrey)),
                 Text(v ?? 'Não informado',
                     style: const TextStyle(
-                        fontSize: 14,
-                        color: CupertinoColors.black)),
+                        fontSize: 14, color: CupertinoColors.black)),
               ])),
           if (hasValue)
             const Icon(CupertinoIcons.doc_on_doc,
@@ -594,7 +582,12 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
             noteText: text,
           );
       ref.invalidate(hubspotNotesProvider(widget.company.cnpj ?? ''));
-      if (mounted) setState(() { _success = true; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _success = true;
+          _loading = false;
+        });
+      }
       await Future.delayed(const Duration(milliseconds: 1200));
       if (mounted) nav.pop();
     } catch (e) {
@@ -665,8 +658,7 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: CupertinoColors.systemGreen
-                        .withValues(alpha: 0.12),
+                    color: CupertinoColors.systemGreen.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Row(
@@ -691,13 +683,11 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                       child: CupertinoButton(
                         color: CupertinoColors.systemGrey5,
                         borderRadius: BorderRadius.circular(12),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed:
                             _loading ? null : () => Navigator.pop(context),
                         child: const Text('Cancelar',
-                            style: TextStyle(
-                                color: CupertinoColors.black)),
+                            style: TextStyle(color: CupertinoColors.black)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -705,8 +695,7 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                       child: CupertinoButton(
                         color: CupertinoColors.activeBlue,
                         borderRadius: BorderRadius.circular(12),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed: _loading ? null : _save,
                         child: _loading
                             ? const CupertinoActivityIndicator(
@@ -780,7 +769,12 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
             email: email.isEmpty ? null : email,
           );
       ref.invalidate(hubspotContactsProvider(widget.company.cnpj ?? ''));
-      if (mounted) setState(() { _success = true; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _success = true;
+          _loading = false;
+        });
+      }
       await Future.delayed(const Duration(milliseconds: 1200));
       if (mounted) nav.pop();
     } catch (e) {
@@ -864,8 +858,7 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: CupertinoColors.systemGreen
-                        .withValues(alpha: 0.12),
+                    color: CupertinoColors.systemGreen.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Row(
@@ -890,13 +883,11 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
                       child: CupertinoButton(
                         color: CupertinoColors.systemGrey5,
                         borderRadius: BorderRadius.circular(12),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed:
                             _loading ? null : () => Navigator.pop(context),
                         child: const Text('Cancelar',
-                            style: TextStyle(
-                                color: CupertinoColors.black)),
+                            style: TextStyle(color: CupertinoColors.black)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -904,8 +895,7 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
                       child: CupertinoButton(
                         color: CupertinoColors.activeBlue,
                         borderRadius: BorderRadius.circular(12),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed: _loading ? null : _save,
                         child: _loading
                             ? const CupertinoActivityIndicator(

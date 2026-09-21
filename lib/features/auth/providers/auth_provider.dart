@@ -32,6 +32,7 @@ class AuthController {
       }
 
       final rawNonce = _generateRandomString();
+      // ignore: unused_local_variable
       final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
 
       final googleSignIn = GoogleSignIn(
