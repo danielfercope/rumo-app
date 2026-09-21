@@ -107,14 +107,14 @@ final hubspotServiceProvider = Provider<HubSpotService>((ref) {
   return HubSpotService(Supabase.instance.client);
 });
 
-final hubspotNotesProvider =
-    FutureProvider.autoDispose.family<List<HubSpotNote>, String>((ref, cnpj) async {
+final hubspotNotesProvider = FutureProvider.autoDispose
+    .family<List<HubSpotNote>, String>((ref, cnpj) async {
   if (cnpj.isEmpty) return [];
   return ref.read(hubspotServiceProvider).getNotesWithOwners(cnpj);
 });
 
-final hubspotContactsProvider =
-    FutureProvider.autoDispose.family<List<HubSpotContact>, String>((ref, cnpj) async {
+final hubspotContactsProvider = FutureProvider.autoDispose
+    .family<List<HubSpotContact>, String>((ref, cnpj) async {
   if (cnpj.isEmpty) return [];
   return ref.read(hubspotServiceProvider).getContacts(cnpj);
 });

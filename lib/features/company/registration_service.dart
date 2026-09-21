@@ -40,9 +40,11 @@ class RegistrationService {
       throw 'Endereço não encontrado. Verifique o CNPJ informado.';
     }
 
-    final loc = data['results'][0]['geometry']['location'] as Map<String, dynamic>;
+    final loc =
+        data['results'][0]['geometry']['location'] as Map<String, dynamic>;
     final locationType =
-        data['results'][0]['geometry']['location_type'] as String? ?? 'APPROXIMATE';
+        data['results'][0]['geometry']['location_type'] as String? ??
+            'APPROXIMATE';
 
     return (
       lat: (loc['lat'] as num).toDouble(),
@@ -177,7 +179,10 @@ class RegistrationService {
         {'name': 'Cidade', 'value': dadosApi['log_municipio']},
         {'name': 'Estado/Região', 'value': dadosApi['log_uf']},
         {'name': 'CEP', 'value': dadosApi['log_cep']},
-        {'name': 'Qual é o valor da dívida?', 'value': dadosForm['valor_divida']},
+        {
+          'name': 'Qual é o valor da dívida?',
+          'value': dadosForm['valor_divida']
+        },
         {'name': 'Possuí débitos?', 'value': dadosForm['possui_debitos']},
         {'name': 'Data de validade e-CAC', 'value': dadosForm['validade_ecac']},
         {'name': 'setor da empresa', 'value': dadosForm['setor_empresa']},

@@ -132,10 +132,10 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
                       ),
                   ],
                 ),
-                CupertinoButton(
+                const CupertinoButton(
                   padding: EdgeInsets.zero,
-                  child: const Icon(CupertinoIcons.add),
                   onPressed: null,
+                  child: Icon(CupertinoIcons.add),
                 ),
               ],
             ),
@@ -173,11 +173,18 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
                   CupertinoSlidingSegmentedControl<int>(
                     groupValue: _selectedSegment,
                     children: const {
-                      0: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Todos')),
-                      1: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Ativos')),
-                      2: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Ganhos')),
+                      0: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Text('Todos')),
+                      1: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Text('Ativos')),
+                      2: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Text('Ganhos')),
                     },
-                    onValueChanged: (v) => setState(() => _selectedSegment = v ?? 0),
+                    onValueChanged: (v) =>
+                        setState(() => _selectedSegment = v ?? 0),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -219,14 +226,16 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
                   (_, index) {
                     final company = filtered[index];
                     return CupertinoListTile(
-                      title: Text(company.fantasyName ?? company.name ?? 'Empresa'),
+                      title: Text(
+                          company.fantasyName ?? company.name ?? 'Empresa'),
                       subtitle: Text(company.segment ?? 'Sem segmento'),
                       trailing: const CupertinoListTileChevron(),
                       onTap: () {
                         showCupertinoModalPopup(
                           context: context,
                           barrierDismissible: true,
-                          builder: (ctx) => CompanyDetailsModal(company: company),
+                          builder: (ctx) =>
+                              CompanyDetailsModal(company: company),
                         );
                       },
                     );
@@ -255,16 +264,18 @@ class _SearchModeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isCnpjMode ? CupertinoColors.activeOrange : CupertinoColors.activeBlue;
-    final icon = isCnpjMode ? CupertinoIcons.number : CupertinoIcons.building_2_fill;
+    final color =
+        isCnpjMode ? CupertinoColors.activeOrange : CupertinoColors.activeBlue;
+    final icon =
+        isCnpjMode ? CupertinoIcons.number : CupertinoIcons.building_2_fill;
     final label = isCnpjMode ? 'Buscando por CNPJ' : 'Buscando por nome';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha:0.35)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -273,7 +284,8 @@ class _SearchModeChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 12, color: color, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -321,7 +333,8 @@ class _ActiveFiltersRow extends ConsumerWidget {
             ),
           if (filters.cnae != null)
             _FilterChip(
-              label: 'CNAE: ${filters.cnae!.length > 12 ? '${filters.cnae!.substring(0, 12)}…' : filters.cnae!}',
+              label:
+                  'CNAE: ${filters.cnae!.length > 12 ? '${filters.cnae!.substring(0, 12)}…' : filters.cnae!}',
               onRemove: () => notifier.setCnae(null),
             ),
           if (filters.radius != 5.0)
@@ -335,9 +348,10 @@ class _ActiveFiltersRow extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: CupertinoColors.systemRed.withValues(alpha:0.1),
+                color: CupertinoColors.systemRed.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: CupertinoColors.systemRed.withValues(alpha:0.3)),
+                border: Border.all(
+                    color: CupertinoColors.systemRed.withValues(alpha: 0.3)),
               ),
               child: const Text(
                 'Limpar tudo',
@@ -368,9 +382,10 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: CupertinoColors.activeBlue.withValues(alpha:0.12),
+          color: CupertinoColors.activeBlue.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: CupertinoColors.activeBlue.withValues(alpha:0.35)),
+          border: Border.all(
+              color: CupertinoColors.activeBlue.withValues(alpha: 0.35)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -386,7 +401,8 @@ class _FilterChip extends StatelessWidget {
             const SizedBox(width: 4),
             GestureDetector(
               onTap: onRemove,
-              child: const Icon(CupertinoIcons.xmark, size: 12, color: CupertinoColors.activeBlue),
+              child: const Icon(CupertinoIcons.xmark,
+                  size: 12, color: CupertinoColors.activeBlue),
             ),
           ],
         ),

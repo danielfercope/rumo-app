@@ -143,7 +143,8 @@ const Map<String, String> kSetores = {
   'INFORMATION_TECHNOLOGY_AND_SERVICES': 'Tecnologia da informação e serviços',
   'INSURANCE': 'Seguro',
   'INTERNATIONAL_AFFAIRS': 'Assuntos internacionais',
-  'INTERNATIONAL_TRADE_AND_DEVELOPMENT': 'Comércio internacional e desenvolvimento',
+  'INTERNATIONAL_TRADE_AND_DEVELOPMENT':
+      'Comércio internacional e desenvolvimento',
   'INVESTMENT_BANKING': 'Banco de investimento',
   'INVESTMENT_MANAGEMENT': 'Gestão de investimentos',
   'JUDICIARY': 'Judiciário',
@@ -172,7 +173,8 @@ const Map<String, String> kSetores = {
   'MUSIC': 'Música',
   'NANOTECHNOLOGY': 'Nanotecnologia',
   'NEWSPAPERS': 'Jornais',
-  'NON_PROFIT_ORGANIZATION_MANAGEMENT': 'Gestão de organizações sem fins lucrativos',
+  'NON_PROFIT_ORGANIZATION_MANAGEMENT':
+      'Gestão de organizações sem fins lucrativos',
   'OIL_ENERGY': 'Petróleo e energia',
   'ONLINE_MEDIA': 'Mídia online',
   'OUTSOURCING_OFFSHORING': 'Subcontratação/externalização offshore',
@@ -226,7 +228,8 @@ const Map<String, String> kSetores = {
   'MOBILE_GAMES': 'Jogos para dispositivos móveis',
   'Cooperativa': 'Cooperativa',
   'Posto de combustível': 'Posto de combustível',
-  'Distribuidor de mercadorias em geral': 'Distribuidor de mercadorias em geral',
+  'Distribuidor de mercadorias em geral':
+      'Distribuidor de mercadorias em geral',
   'Distribuidora de gás e combustíveis': 'Distribuidora de gás e combustíveis',
   'Perfumaria': 'Perfumaria',
   'Loja de Peças / Pneus': 'Loja de Peças / Pneus',
@@ -234,7 +237,8 @@ const Map<String, String> kSetores = {
   'Agroindústria': 'Agroindústria',
   'Indústria em geral': 'Indústria em geral',
   'Bar / Padaria / Pizzaria': 'Bar / Padaria / Pizzaria',
-  'Profissional liberal (Médico, Engenheiro, etc.)': 'Profissional liberal (Médico, Engenheiro, etc.)',
+  'Profissional liberal (Médico, Engenheiro, etc.)':
+      'Profissional liberal (Médico, Engenheiro, etc.)',
   'Clínicas / Consultório': 'Clínicas / Consultório',
   'Agronegócio': 'Agronegócio',
   'Distribuidoras': 'Distribuidoras',
