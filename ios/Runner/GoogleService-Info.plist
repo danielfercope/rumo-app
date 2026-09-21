@@ -2,24 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CLIENT_ID</key>
-	<string>665252418802-ne4d47jjvagh5l7aj1d2qea3gi1q9slr.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.665252418802-ne4d47jjvagh5l7aj1d2qea3gi1q9slr</string>
-	<key>ANDROID_CLIENT_ID</key>
-	<string>665252418802-5g6ojetmhobvmnhbgu01244s1p6or751.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
-	<string>AIzaSyBD0Ef3kSa8DmszbmDBWdE0L_imzSJwo4Y</string>
+	<string>AIzaSyCV9oPHVJyuDN1vtVecrdCQo62dfmGTetI</string>
 	<key>GCM_SENDER_ID</key>
-	<string>665252418802</string>
+	<string>194526953767</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.rumo.dataRotaApp</string>
 	<key>PROJECT_ID</key>
-	<string>rumo-1a7d2</string>
+	<string>rumo-app-b05fe</string>
 	<key>STORAGE_BUCKET</key>
-	<string>rumo-1a7d2.firebasestorage.app</string>
+	<string>rumo-app-b05fe.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -31,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:665252418802:ios:3c2c001a77541986a42c6b</string>
+	<string>1:194526953767:ios:a948eb1e70f22629532902</string>
 </dict>
 </plist>
