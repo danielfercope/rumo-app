@@ -36,12 +36,18 @@ class MapFilters {
     bool clearCnae = false,
     double? radius,
   }) {
+    final effectiveState = clearState ? null : (state ?? this.state);
+    final stateChanged = effectiveState != this.state;
+
     return MapFilters(
       segment: clearSegment ? null : (segment ?? this.segment),
       product: clearProduct ? null : (product ?? this.product),
       type: clearType ? null : (type ?? this.type),
-      state: clearState ? null : (state ?? this.state),
-      city: (clearCity || clearState) ? null : (city ?? this.city),
+      state: effectiveState,
+      // Uma cidade só faz sentido dentro do estado a que pertence: se o
+      // estado mudou e nenhuma cidade nova foi informada, a cidade antiga
+      // é descartada em vez de ficar "presa" a um estado diferente.
+      city: clearCity ? null : (city ?? (stateChanged ? null : this.city)),
       cnae: clearCnae ? null : (cnae ?? this.cnae),
       radius: radius ?? this.radius,
     );
