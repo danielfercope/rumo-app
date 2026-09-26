@@ -10,6 +10,7 @@ import 'core/app_config.dart';
 import 'core/services/analytics_service.dart';
 import 'firebase_options.dart';
 import 'features/auth/login_page.dart';
+import 'features/auth/privacy_policy_page.dart';
 import 'features/leads/leads_page.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/map/radar_page.dart';
@@ -112,14 +113,29 @@ class MainNavigation extends ConsumerWidget {
                   ),
                   child: SafeArea(
                     child: Center(
-                      child: Consumer(
-                        builder: (context, ref, _) => CupertinoButton(
-                          color: CupertinoColors.destructiveRed,
-                          onPressed: () async {
-                            await ref.read(authControllerProvider).signOut();
-                          },
-                          child: const Text('Sair da conta'),
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CupertinoButton(
+                            onPressed: () => Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                  builder: (_) => const PrivacyPolicyPage()),
+                            ),
+                            child: const Text('Política de Privacidade'),
+                          ),
+                          Consumer(
+                            builder: (context, ref, _) => CupertinoButton(
+                              color: CupertinoColors.destructiveRed,
+                              onPressed: () async {
+                                await ref
+                                    .read(authControllerProvider)
+                                    .signOut();
+                              },
+                              child: const Text('Sair da conta'),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

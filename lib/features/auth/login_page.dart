@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:rumo_app/features/auth/register_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'privacy_policy_page.dart';
 import 'providers/auth_provider.dart';
 
 // Logo "G" do Google embutido localmente para não depender de uma URL externa
@@ -225,6 +226,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       CupertinoPageRoute(builder: (_) => const RegisterPage()),
                     ),
                     child: const Text('Criar conta'),
+                  ),
+                ),
+                Center(
+                  child: CupertinoButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      CupertinoPageRoute(
+                          builder: (_) => const PrivacyPolicyPage()),
+                    ),
+                    child: const Text(
+                      'Política de Privacidade',
+                      style: TextStyle(
+                        color: CupertinoColors.systemGrey,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ),
               ],
