@@ -2,7 +2,7 @@ name: rumo_app
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ^3.5.4
@@ -43,3 +43,4 @@ flutter:
     - assets/libria.png
     - assets/save_id.png
     - assets/icon_save.webp
+    - POLITICA_DE_PRIVACIDADE.md
