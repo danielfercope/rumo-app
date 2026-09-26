@@ -36,3 +36,27 @@ jobs:
 
       - name: Rodar testes
         run: flutter test
+
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico completo, recomendado pelo SonarCloud para melhor relevância da análise
+
+      - name: Instalar o Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Instalar dependências do projeto
+        run: flutter pub get
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
