@@ -8,7 +8,7 @@ import '../map/presentation/filter_modal.dart';
 import '../map/presentation/company_details_modal.dart';
 import 'leads_search_provider.dart';
 
-bool _looksLikeCnpj(String query) {
+bool looksLikeCnpj(String query) {
   if (query.isEmpty) return false;
   final digitCount = query.replaceAll(RegExp(r'[^\d]'), '').length;
   return RegExp(r'^[\d.\-/\s]+$').hasMatch(query) && digitCount >= 3;
@@ -42,7 +42,7 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
   }
 
   void _onSearchChanged(String value) {
-    final isCnpj = _looksLikeCnpj(value);
+    final isCnpj = looksLikeCnpj(value);
     setState(() {
       _searchQuery = value;
       _isCnpjMode = isCnpj;
