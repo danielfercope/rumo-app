@@ -1,0 +1,65 @@
+# Ambiente local do novo backend (Postgres+PostGIS + PostgREST + Backend Python),
+# substituindo o Supabase. Distinto do docker-compose.yml (que builda o Flutter Web).
+# Uso: `make db-up` / `make db-down` (ver Makefile).
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rumo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - rumo_db_data:/var/lib/postgresql/data
+      - ./db/schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD:-authenticator}@db:5432/rumo
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: web_anon
+      PGRST_JWT_SECRET: ${INTERNAL_JWT_SECRET:-dev-secret-de-pelo-menos-32-bytes-troque-isto}
+      PGRST_JWT_ROLE_CLAIM_KEY: .role
+    ports:
+      - "3000:3000"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_SERVICE_ACCOUNT_PATH: /app/secrets/firebase-service-account.json
+      INTERNAL_JWT_SECRET: ${INTERNAL_JWT_SECRET:-dev-secret-de-pelo-menos-32-bytes-troque-isto}
+      HUBSPOT_TOKEN: ${HUBSPOT_TOKEN:-}
+      TOKEN_EMPRESA_AQUI: ${TOKEN_EMPRESA_AQUI:-}
+    volumes:
+      - ./infra/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
+    ports:
+      - "4000:4000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - postgrest
+      - backend
+    volumes:
+      - ./infra/Caddyfile.local:/etc/caddy/Caddyfile:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  rumo_db_data:
