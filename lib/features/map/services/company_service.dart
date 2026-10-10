@@ -1,22 +1,24 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/api_client.dart';
 import '../models/company_model.dart';
 import '../providers/filter_provider.dart';
 
 class CompanyService {
-  final SupabaseClient _supabase;
+  final ApiClient _apiClient;
 
-  CompanyService(this._supabase);
+  CompanyService(this._apiClient);
+
+  bool? _isClientFromType(MapFilters? filters) {
+    if (filters?.type == 'client') return true;
+    if (filters?.type == 'lead') return false;
+    return null;
+  }
 
   Future<List<Company>> getCompanies({
     required double userLat,
     required double userLong,
     MapFilters? filters,
   }) async {
-    bool? isClient;
-    if (filters?.type == 'client') isClient = true;
-    if (filters?.type == 'lead') isClient = false;
-
     final params = <String, dynamic>{
       'p_lat': userLat,
       'p_lon': userLong,
@@ -26,14 +28,14 @@ class CompanyService {
       if (filters?.state?.isNotEmpty == true) 'p_state': filters!.state,
       if (filters?.city?.isNotEmpty == true) 'p_city': filters!.city,
       if (filters?.cnae?.isNotEmpty == true) 'p_cnae': filters!.cnae,
-      if (isClient != null) 'p_is_client': isClient,
+      if (_isClientFromType(filters) != null)
+        'p_is_client': _isClientFromType(filters),
     };
 
-    debugPrint('RPC params: $params');
-    final response =
-        await _supabase.rpc('search_companies_in_radius', params: params);
+    debugPrint('RPC search_companies (raio) params: $params');
+    final response = await _apiClient.rpc('search_companies', params);
     final list = response as List;
-    debugPrint('RPC retornou ${list.length} registros');
+    debugPrint('search_companies retornou ${list.length} registros');
     return list
         .map((e) => Company.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -45,34 +47,29 @@ class CompanyService {
     MapFilters? filters,
     int limit = 200,
   }) async {
-    bool? isClient;
-    if (filters?.type == 'client') isClient = true;
-    if (filters?.type == 'lead') isClient = false;
-
     final params = <String, dynamic>{
       'p_query': query,
-      'p_is_cnpj': isCnpj,
       'p_limit': limit,
       if (filters?.segment?.isNotEmpty == true) 'p_segment': filters!.segment,
       if (filters?.product?.isNotEmpty == true) 'p_product': filters!.product,
       if (filters?.state?.isNotEmpty == true) 'p_state': filters!.state,
       if (filters?.city?.isNotEmpty == true) 'p_city': filters!.city,
       if (filters?.cnae?.isNotEmpty == true) 'p_cnae': filters!.cnae,
-      if (isClient != null) 'p_is_client': isClient,
+      if (_isClientFromType(filters) != null)
+        'p_is_client': _isClientFromType(filters),
     };
 
-    debugPrint('RPC text params: $params');
-    final response =
-        await _supabase.rpc('search_companies_text', params: params);
+    debugPrint('RPC search_companies (texto) params: $params');
+    final response = await _apiClient.rpc('search_companies', params);
     final list = response as List;
-    debugPrint('RPC text retornou ${list.length} registros');
+    debugPrint('search_companies retornou ${list.length} registros');
     return list
         .map((e) => Company.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<Map<String, dynamic>> getFilterOptions() async {
-    final response = await _supabase.rpc('get_filter_options');
+    final response = await _apiClient.rpc('get_filter_options', {});
     final data = response as Map<String, dynamic>;
     return {
       'segments': List<String>.from(data['segments'] ?? []),

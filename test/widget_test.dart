@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:rumo_app/main.dart';
 import 'package:rumo_app/features/auth/providers/auth_provider.dart';
@@ -12,10 +11,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authStateProvider.overrideWith(
-            (ref) =>
-                Stream.value(const AuthState(AuthChangeEvent.signedOut, null)),
-          ),
+          authStateProvider.overrideWith((ref) => Stream.value(null)),
         ],
         child: const RumoApp(),
       ),

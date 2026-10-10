@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/company_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/company_repository.dart';
 
 class MapFilters {
   final String? segment;
@@ -96,8 +95,8 @@ final mapFiltersProvider =
     NotifierProvider<MapFiltersNotifier, MapFilters>(MapFiltersNotifier.new);
 
 final filterOptionsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final service = CompanyService(Supabase.instance.client);
-  return await service.getFilterOptions();
+  final repository = ref.watch(companyRepositoryProvider);
+  return await repository.getFilterOptions();
 });
 
 final filteredCitiesProvider = Provider<List<String>>((ref) {
