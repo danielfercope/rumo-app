@@ -19,10 +19,11 @@ final authControllerProvider = Provider((ref) {
 });
 
 class AuthController {
-  AuthController(this._apiClient);
+  AuthController(this._apiClient, {FirebaseAuth? auth})
+      : _auth = auth ?? FirebaseAuth.instance;
 
   final ApiClient _apiClient;
-  final _auth = FirebaseAuth.instance;
+  final FirebaseAuth _auth;
 
   Future<void> _ensureProfileExists(String? nome,
       {String? departamento}) async {

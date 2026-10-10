@@ -40,15 +40,30 @@ class ApiException implements Exception {
 /// substituindo o SupabaseClient. Troca o ID Token do Firebase por um token
 /// interno via `/backend/auth/exchange` (ver backend/app/main.py), cacheado
 /// até expirar.
+///
+/// `httpClient` e `accessTokenProvider` são injetáveis só pra teste (ver
+/// test/features/core/api_client_test.dart) — em produção usam os valores
+/// reais (http.Client() e o fluxo de troca de token via Firebase).
 class ApiClient {
-  ApiClient({required this.baseUrl});
+  ApiClient({
+    required this.baseUrl,
+    http.Client? httpClient,
+    Future<String> Function()? accessTokenProvider,
+  })  : _httpClient = httpClient ?? http.Client(),
+        _accessTokenProvider = accessTokenProvider;
 
   final String baseUrl;
+  final http.Client _httpClient;
+  final Future<String> Function()? _accessTokenProvider;
 
   String? _cachedToken;
   int? _cachedTokenExpiresAt;
 
   Future<String> _accessToken() async {
+    if (_accessTokenProvider != null) {
+      return _accessTokenProvider();
+    }
+
     final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (_cachedToken != null &&
         _cachedTokenExpiresAt != null &&
@@ -62,7 +77,7 @@ class ApiClient {
     }
 
     final idToken = await user.getIdToken();
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/backend/auth/exchange'),
       headers: {'Authorization': 'Bearer $idToken'},
     );
@@ -91,13 +106,13 @@ class ApiClient {
   Future<dynamic> get(String table, {Map<String, String>? query}) async {
     final uri =
         Uri.parse('$baseUrl/rest/$table').replace(queryParameters: query);
-    final response = await http.get(uri, headers: await _authHeaders());
+    final response = await _httpClient.get(uri, headers: await _authHeaders());
     return _decode(response);
   }
 
   Future<dynamic> post(String table, Map<String, dynamic> body) async {
     final uri = Uri.parse('$baseUrl/rest/$table');
-    final response = await http.post(uri,
+    final response = await _httpClient.post(uri,
         headers: await _authHeaders(), body: json.encode(body));
     return _decode(response);
   }
@@ -113,7 +128,7 @@ class ApiClient {
     final headers = await _authHeaders();
     headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
     final response =
-        await http.post(uri, headers: headers, body: json.encode(body));
+        await _httpClient.post(uri, headers: headers, body: json.encode(body));
     return _decode(response);
   }
 
@@ -121,7 +136,7 @@ class ApiClient {
   /// de parâmetros, só muda o transporte.
   Future<dynamic> rpc(String fn, Map<String, dynamic> params) async {
     final uri = Uri.parse('$baseUrl/rest/rpc/$fn');
-    final response = await http.post(uri,
+    final response = await _httpClient.post(uri,
         headers: await _authHeaders(), body: json.encode(params));
     return _decode(response);
   }
@@ -129,7 +144,7 @@ class ApiClient {
   /// Chama o Backend (empresa-aqui, hubspot) em vez de uma Edge Function.
   Future<dynamic> backend(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$baseUrl/backend/$path');
-    final response = await http.post(uri,
+    final response = await _httpClient.post(uri,
         headers: await _authHeaders(), body: json.encode(body));
     return _decode(response);
   }

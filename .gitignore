@@ -49,3 +49,6 @@ android/build/ios/XCBuildData/PIFCache/workspace/
 # Infra local (PostgREST + Backend self-hospedado) — segredos locais
 infra/.env
 infra/firebase-service-account.json
+
+# Relatório de cobertura (gerado por `flutter test --coverage`)
+coverage/
