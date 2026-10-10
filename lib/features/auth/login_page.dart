@@ -1,8 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:rumo_app/features/auth/register_page.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'firebase_auth_messages.dart';
 import 'privacy_policy_page.dart';
 import 'providers/auth_provider.dart';
 
@@ -53,9 +54,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             email: email,
             password: password,
           );
-    } on AuthException catch (e) {
+    } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      _showError(e.message);
+      _showError(firebaseAuthErrorMessage(e));
     } catch (e) {
       if (!mounted) return;
       _showError('Ocorreu um erro inesperado. Tente novamente.');

@@ -45,3 +45,7 @@ app.*.map.json
 /android/app/release
 /lib/core/services/supabase_config.dart
 android/build/ios/XCBuildData/PIFCache/workspace/
+
+# Infra local (PostgREST + Backend self-hospedado) — segredos locais
+infra/.env
+infra/firebase-service-account.json

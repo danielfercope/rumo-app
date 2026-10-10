@@ -1,0 +1,13 @@
+# Caddy local (sem TLS) — espelha o roteamento por path que a produção
+# vai ter via Caddy+TLS (ver seção 4 do plano), pra testar a mesma estrutura
+# de URL (API_BASE_URL único, /rest/* e /backend/*) em dev e prod.
+
+:8080 {
+	handle_path /rest/* {
+		reverse_proxy postgrest:3000
+	}
+
+	handle_path /backend/* {
+		reverse_proxy backend:4000
+	}
+}

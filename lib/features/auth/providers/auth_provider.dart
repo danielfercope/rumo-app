@@ -1,25 +1,35 @@
 import 'dart:io';
-import 'dart:convert';
-import 'dart:math';
-import 'package:crypto/crypto.dart';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../core/app_config.dart';
 
-final authStateProvider = StreamProvider<AuthState>((ref) {
-  return Supabase.instance.client.auth.onAuthStateChange;
+import '../../../core/app_config.dart';
+import '../../../core/services/api_client.dart';
+
+/// StreamProvider sobre idTokenChanges (não authStateChanges) pra também
+/// capturar refresh de token e invalidar o cache do ApiClient junto.
+final authStateProvider = StreamProvider<User?>((ref) {
+  return FirebaseAuth.instance.idTokenChanges();
 });
 
-final authControllerProvider = Provider((ref) => AuthController());
+final authControllerProvider = Provider((ref) {
+  return AuthController(ref.watch(apiClientProvider));
+});
 
 class AuthController {
-  final _supabase = Supabase.instance.client;
+  AuthController(this._apiClient);
 
-  String _generateRandomString() {
-    final random = Random.secure();
-    return base64Url.encode(List<int>.generate(16, (_) => random.nextInt(256)));
+  final ApiClient _apiClient;
+  final _auth = FirebaseAuth.instance;
+
+  Future<void> _ensureProfileExists(String? nome,
+      {String? departamento}) async {
+    await _apiClient.rpc('ensure_profile', {
+      'p_nome': nome ?? 'Sem nome',
+      'p_departamento': departamento,
+    });
   }
 
   Future<void> signInWithGoogle() async {
@@ -30,10 +40,6 @@ class AuthController {
       if (webClientId.isEmpty) {
         throw 'SERVER_WEB_CLIENT_ID não configurado';
       }
-
-      final rawNonce = _generateRandomString();
-      // ignore: unused_local_variable
-      final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
 
       final googleSignIn = GoogleSignIn(
         clientId: kIsWeb || Platform.isIOS ? iosClientId : null,
@@ -51,31 +57,12 @@ class AuthController {
         throw 'ID Token não encontrado.';
       }
 
-      await _supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: accessToken,
-        nonce: rawNonce,
+      await _auth.signInWithCredential(
+        GoogleAuthProvider.credential(
+            idToken: idToken, accessToken: accessToken),
       );
 
-      final user = _supabase.auth.currentUser;
-      if (user != null) {
-        final existingProfile = await _supabase
-            .from('profiles')
-            .select()
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (existingProfile == null) {
-          await _supabase.from('profiles').insert({
-            'id': user.id,
-            'email': user.email,
-            'nome': user.userMetadata?['full_name'] ?? googleUser.displayName,
-            'departamento': 'Não definido',
-            'nivel_acesso': 'user',
-          });
-        }
-      }
+      await _ensureProfileExists(googleUser.displayName);
     } catch (e) {
       debugPrint('Erro no login com Google: $e');
       rethrow;
@@ -83,7 +70,7 @@ class AuthController {
   }
 
   Future<void> signIn({required String email, required String password}) async {
-    await _supabase.auth.signInWithPassword(email: email, password: password);
+    await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
   Future<void> signUp({
@@ -93,21 +80,9 @@ class AuthController {
     required String department,
   }) async {
     try {
-      final response = await _supabase.auth.signUp(
-        email: email,
-        password: password,
-        data: {'full_name': name, 'department': department},
-      );
-      final user = response.user;
-      if (user != null) {
-        await _supabase.from('profiles').insert({
-          'id': user.id,
-          'email': email,
-          'nome': name,
-          'departamento': department,
-          'nivel_acesso': 'user',
-        });
-      }
+      await _auth.createUserWithEmailAndPassword(
+          email: email, password: password);
+      await _ensureProfileExists(name, departamento: department);
     } catch (e) {
       debugPrint('Erro no signUp: $e');
       rethrow;
@@ -115,6 +90,6 @@ class AuthController {
   }
 
   Future<void> signOut() async {
-    await _supabase.auth.signOut();
+    await _auth.signOut();
   }
 }
