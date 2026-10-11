@@ -30,6 +30,10 @@ Future<void> main() async {
     };
   }
 
+  // TODO(migração Supabase→PostgREST, semana 4): remover depois que
+  // company_service/tracking_service/registration_service/hubspot_service
+  // pararem de depender do Supabase.instance.client. Login/auth já usa
+  // Firebase Auth (ver auth_provider.dart) — isto fica só pelos dados.
   await Supabase.initialize(
     url: AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
@@ -60,8 +64,8 @@ class RumoApp extends ConsumerWidget {
         primaryColor: CupertinoColors.systemYellow,
       ),
       home: authState.when(
-        data: (state) {
-          if (state.session != null) {
+        data: (user) {
+          if (user != null) {
             return const MainNavigation();
           }
           return const LoginPage();

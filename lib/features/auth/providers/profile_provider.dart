@@ -1,5 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/services/api_client.dart';
 
 class UserProfile {
   final String id;
@@ -35,14 +37,13 @@ class UserProfile {
 }
 
 final profileProvider = FutureProvider<UserProfile?>((ref) async {
-  final user = Supabase.instance.client.auth.currentUser;
+  final user = FirebaseAuth.instance.currentUser;
   if (user == null) return null;
 
-  final data = await Supabase.instance.client
-      .from('profiles')
-      .select()
-      .eq('id', user.id)
-      .maybeSingle();
-
-  return data == null ? null : UserProfile.fromJson(data);
+  final apiClient = ref.watch(apiClientProvider);
+  final data = await apiClient.get('profiles', query: {'id': 'eq.${user.uid}'});
+  final rows = data as List;
+  return rows.isEmpty
+      ? null
+      : UserProfile.fromJson(rows.first as Map<String, dynamic>);
 });

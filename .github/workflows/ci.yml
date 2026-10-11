@@ -56,6 +56,9 @@ jobs:
       - name: Instalar dependências do projeto
         run: flutter pub get
 
+      - name: Rodar testes com cobertura
+        run: flutter test --coverage
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
         env:

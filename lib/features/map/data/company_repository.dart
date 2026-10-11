@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/api_client.dart';
 import '../models/company_model.dart';
 import '../providers/filter_provider.dart';
 import '../services/company_service.dart';
@@ -51,5 +51,5 @@ class CompanyRepository implements ICompanyRepository {
 }
 
 final companyRepositoryProvider = Provider<ICompanyRepository>((ref) {
-  return CompanyRepository(CompanyService(Supabase.instance.client));
+  return CompanyRepository(CompanyService(ref.watch(apiClientProvider)));
 });

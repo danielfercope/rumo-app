@@ -1,8 +1,9 @@
 // lib/features/auth/register_page.dart
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'firebase_auth_messages.dart';
 import 'providers/auth_provider.dart';
 
 const _departments = [
@@ -87,10 +88,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       Navigator.pop(context); // Fecha o loading dialog
 
       _showSuccess('Bem vindo à RUMO');
-    } on AuthException catch (e) {
+    } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // Fecha o loading dialog
-      _showError(e.message);
+      _showError(firebaseAuthErrorMessage(e));
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // Fecha o loading dialog
