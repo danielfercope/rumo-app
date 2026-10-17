@@ -26,7 +26,8 @@ O projeto foi desenhado sob o padrão arquitetural **MVVM** (Model-View-ViewMode
 * **Google Maps SDK:** Renderização de camadas geoespaciais e interação de mapa.
 
 ### Backend & Banco de Dados
-* **[Supabase](https://supabase.com/):** Backend-as-a-Service, provendo autenticação e microsserviços rápidos.
+* **[Firebase Auth](https://firebase.google.com/products/auth):** Autenticação (e-mail/senha e Google), com Crashlytics e Analytics também via Firebase.
+* **Backend self-hospedado:** PostgreSQL + PostGIS exposto via [PostgREST](https://postgrest.org/), com um serviço Python (FastAPI) auxiliar, atrás de um proxy Caddy — orquestrado localmente via Docker Compose.
 * **PostgreSQL + PostGIS:** O coração do sistema de geolocalização. Processa *Stored Procedures* baseadas no modelo elipsoidal WGS 84 para cálculo de distâncias na casa dos milímetros.
 
 ### APIs & Integrações
@@ -41,11 +42,39 @@ O projeto foi desenhado sob o padrão arquitetural **MVVM** (Model-View-ViewMode
 Certifique-se de ter instalado em sua máquina:
 * [Flutter SDK](https://docs.flutter.dev/get-started/install) (versão mais recente)
 * Uma IDE como VS Code ou Android Studio
-* Conta configurada no Supabase e chaves das APIs do Google e HubSpot.
+* [Docker](https://www.docker.com/) + Docker Compose (pra rodar o backend self-hospedado localmente)
+* Projeto Firebase configurado (Auth, Crashlytics, Analytics) e chaves das APIs do Google Maps/Geocoding, HubSpot e EmpresaAqui
+* Para rodar em iOS: um **Mac com Xcode**, idealmente com um **iPhone físico** disponível pra testar (o simulador não reproduz fielmente permissões de localização em background)
 
 ### Passo a Passo
 
 1. **Clone o repositório:**
    ```bash
-   git clone [https://github.com/seu-usuario/rumo-app.git](https://github.com/seu-usuario/rumo-app.git)
+   git clone https://github.com/seu-usuario/rumo-app.git
    cd rumo-app
+   ```
+
+2. **Configure o `.env` do app** na raiz do projeto, com as variáveis listadas no `CLAUDE.md` (seção "Variáveis de ambiente").
+
+3. **Suba o backend self-hospedado localmente:**
+   ```bash
+   cp infra/.env.example infra/.env   # preencher os segredos antes
+   make db-up                          # sobe PostgreSQL + PostGREST + backend Python + Caddy
+   make data                           # opcional — popula empresas fictícias pra testar o radar
+   ```
+
+4. **Rode o app:**
+   ```bash
+   # Web
+   flutter run -d chrome --dart-define-from-file=.env
+
+   # Android/iOS (dispositivo ou emulador já selecionado)
+   flutter run --dart-define-from-file=.env
+   ```
+   Detalhes completos (configuração extra do iOS, permissões, etc.) estão no `CLAUDE.md`, seção "Executando o projeto localmente".
+
+5. **Gere o APK Android** (opcional, pra distribuição/teste fora do ambiente de desenvolvimento):
+   ```bash
+   flutter build apk --release --dart-define-from-file=.env
+   ```
+   Requer `android/key.properties` + keystore configurados (não versionados) para um build de release assinado.

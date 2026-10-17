@@ -28,7 +28,7 @@ O `norte.md` exige ao menos três fluxos de uso completos que demonstrem o valor
 
 1. Usuário faz login (e-mail/senha ou Google).
 2. App obtém a localização GPS atual e centraliza o mapa.
-3. `RadarPage` exibe os marcadores das empresas dentro do raio configurado (`companiesProvider`, via RPC `search_companies_in_radius`).
+3. `RadarPage` exibe os marcadores das empresas dentro do raio configurado (`companiesProvider`, via RPC `search_companies`).
 4. Usuário aplica filtros avançados (segmento, produto, UF, cidade, CNAE, tipo cliente/lead) através do `FilterModal`.
 5. Usuário toca em um marcador → abre `CompanyDetailsModal` com os dados da empresa.
 6. Usuário toca em "traçar rota" → app abre o Google Maps externo com a rota até a empresa.
@@ -48,10 +48,12 @@ O `norte.md` exige ao menos três fluxos de uso completos que demonstrem o valor
 ### Fluxo 3 — Cadastro de nova empresa
 
 1. Usuário autorizado (departamento ou nível de acesso compatível) toca em "+ empresa" no `RadarPage`.
-2. **Passo 1**: informa o CNPJ; app consulta a API EmpresaAqui e valida que a empresa está a até 2 km da localização atual.
+2. **Passo 1**: informa o CNPJ; app consulta a API EmpresaAqui (via backend self-hospedado) e valida que a empresa está a até 2 km da localização atual¹.
 3. **Passo 2**: revisa/completa dados do sócio responsável.
 4. **Passo 3**: preenche dados complementares (segmento, produto, observações).
-5. App salva a empresa no Supabase (`central_data`) e envia os dados para o CRM via webhook.
+5. App salva a empresa no backend self-hospedado (tabela `companies`) e envia os dados para o CRM via webhook.
 6. App exibe confirmação de sucesso e atualiza o mapa com o novo marcador.
+
+¹ A consulta à EmpresaAqui está pendente de reimplementação no backend novo (ver `CLAUDE.md`, seção "Backend self-hospedado") — hoje esse passo devolve erro até essa integração ser refeita.
 
 **Valor demonstrado**: elimina digitação manual e garante que só empresas fisicamente visitadas sejam cadastradas.
