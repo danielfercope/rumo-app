@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'core/app_config.dart';
 import 'core/services/analytics_service.dart';
 import 'firebase_options.dart';
 import 'features/auth/login_page.dart';
@@ -29,15 +27,6 @@ Future<void> main() async {
       return true;
     };
   }
-
-  // TODO(migração Supabase→PostgREST, semana 4): remover depois que
-  // company_service/tracking_service/registration_service/hubspot_service
-  // pararem de depender do Supabase.instance.client. Login/auth já usa
-  // Firebase Auth (ver auth_provider.dart) — isto fica só pelos dados.
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
-  );
 
   runZonedGuarded(
     () => runApp(const ProviderScope(child: RumoApp())),

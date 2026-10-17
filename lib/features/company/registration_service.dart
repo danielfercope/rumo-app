@@ -2,29 +2,27 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_config.dart';
+import '../../core/services/api_client.dart';
 import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegistrationService {
-  final SupabaseClient _supabase;
+  final ApiClient _apiClient;
 
-  RegistrationService(this._supabase);
+  RegistrationService(this._apiClient);
 
   Future<bool> cnpjExists(String cnpj) async {
-    final result = await _supabase
-        .from('central_data')
-        .select('id')
-        .eq('cnpj', cnpj)
-        .maybeSingle();
-    return result != null;
+    final result = await _apiClient
+        .get('companies', query: {'cnpj': 'eq.$cnpj', 'select': 'id'});
+    return (result as List).isNotEmpty;
   }
 
+  // TODO: hoje devolve 501 — backend/app/services/empresa_aqui_service.py
+  // ainda não implementa a lógica real (ver comentário "BLOQUEIO #2 do
+  // plano" lá — a lógica original está numa Edge Function do Supabase que
+  // precisa ser extraída antes).
   Future<Map<String, dynamic>> fetchEmpresaAqui(String cnpj) async {
-    final response = await _supabase.functions.invoke(
-      'empresa-aqui',
-      body: {'cnpj': cnpj},
-    );
-    return (response.data as Map<String, dynamic>);
+    final data = await _apiClient.backend('empresa-aqui', {'cnpj': cnpj});
+    return data as Map<String, dynamic>;
   }
 
   Future<({double lat, double lon, String precisao})> geocodeAddress(
@@ -87,18 +85,23 @@ class RegistrationService {
 
     final dataAbertura = _parseDate(dadosApi['data_abertura']?.toString());
 
-    await _supabase.from('central_data').upsert(
+    // TODO: faixa_de_funcionarios/faixa_de_faturamento (dadosApi
+    // 'quadro_funcionarios'/'faturamento') pertencem à tabela separada
+    // company_financial_profile (FK company_id) no schema novo — ainda não
+    // são gravados por este método; decisão de quando/como popular esses
+    // dois campos fica pendente.
+    await _apiClient.upsert(
+      'companies',
       {
         'cnpj': dadosApi['cnpj'],
-        'nome_da_empresa': dadosApi['razao'],
+        'razao_social': dadosApi['razao'],
         'nome_fantasia': dadosApi['fantasia'],
         'email_principal': dadosApi['email'],
-        'email': dadosApi['email'],
         'url_company_page': dadosApi['site'],
         'telefone_principal': telefone,
         'endereco_completo':
             '${dadosApi['log_tipo'] ?? ''} ${dadosApi['log_nome'] ?? ''}, ${dadosApi['log_num'] ?? ''} - ${dadosApi['log_bairro'] ?? ''}',
-        'tipo_de_logradouro': dadosApi['log_tipo'],
+        'tipo_logradouro': dadosApi['log_tipo'],
         'logradouro': dadosApi['log_nome'],
         'numero': dadosApi['log_num'],
         'bairro': dadosApi['log_bairro'],
@@ -106,15 +109,13 @@ class RegistrationService {
         'uf': dadosApi['log_uf'],
         'cep': dadosApi['log_cep'],
         'natureza_juridica': dadosApi['natureza_juridica'],
-        'porte_da_empresa': dadosApi['porte'],
+        'porte': dadosApi['porte'],
         'situacao': dadosApi['situacao_cadastral'],
-        'data_de_abertura': dataAbertura,
+        'data_abertura': dataAbertura,
         'cnae_principal': dadosApi['cnae_principal'],
-        'faixa_de_funcionarios': dadosApi['quadro_funcionarios'],
-        'faixa_de_faturamento': dadosApi['faturamento'],
-        'latitude': lat.toString(),
-        'longitude': lon.toString(),
-        'precisao_nivel': precisao,
+        'latitude': lat,
+        'longitude': lon,
+        'precisao_geocodificacao': precisao,
       },
       onConflict: 'cnpj',
     );
@@ -213,5 +214,5 @@ class RegistrationService {
 }
 
 final registrationServiceProvider = Provider<RegistrationService>((ref) {
-  return RegistrationService(Supabase.instance.client);
+  return RegistrationService(ref.watch(apiClientProvider));
 });

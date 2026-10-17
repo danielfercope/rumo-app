@@ -1,10 +1,4 @@
 class AppConfig {
-  // TODO(migração Supabase→PostgREST, semana 4): remover depois do cutover
-  // final dos arquivos que ainda chamam Supabase.instance.client diretamente
-  // (company_service, tracking_service, registration_service, hubspot_service).
-  static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-
   static const serverWebClientId =
       String.fromEnvironment('SERVER_WEB_CLIENT_ID');
   static const clientId = String.fromEnvironment('CLIENT_ID');
