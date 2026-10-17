@@ -1,41 +1,34 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:rumo_app/core/services/api_client.dart';
 import 'package:rumo_app/features/company/hubspot_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-class MockSupabaseClient extends Mock implements SupabaseClient {}
-
-class MockFunctionsClient extends Mock implements FunctionsClient {}
+class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
-  late MockSupabaseClient mockClient;
-  late MockFunctionsClient mockFunctions;
+  late MockApiClient mockApiClient;
   late HubSpotService service;
 
   setUp(() {
-    mockClient = MockSupabaseClient();
-    mockFunctions = MockFunctionsClient();
-    when(() => mockClient.functions).thenReturn(mockFunctions);
-    service = HubSpotService(mockClient);
+    mockApiClient = MockApiClient();
+    service = HubSpotService(mockApiClient);
   });
 
   group('getNotesWithOwners', () {
-    test('converte a resposta da edge function em uma lista de HubSpotNote',
+    test('converte a resposta do backend em uma lista de HubSpotNote',
         () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(
-                status: 200,
-                data: {
-                  'notes': [
-                    {
-                      'id': 'note-1',
-                      'body': 'Ligação realizada',
-                      'timestamp': '2026-01-15T10:00:00Z',
-                      'ownerName': 'Fulano',
-                    }
-                  ],
-                },
-              ));
+      when(() => mockApiClient.backend('hubspot', any())).thenAnswer(
+        (_) async => {
+          'notes': [
+            {
+              'id': 'note-1',
+              'body': 'Ligação realizada',
+              'timestamp': '2026-01-15T10:00:00Z',
+              'ownerName': 'Fulano',
+            }
+          ],
+        },
+      );
 
       final notes = await service.getNotesWithOwners('12345678000199');
 
@@ -46,11 +39,8 @@ void main() {
     });
 
     test('retorna lista vazia quando a resposta não tem notas', () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(
-                status: 200,
-                data: {'notes': null},
-              ));
+      when(() => mockApiClient.backend('hubspot', any()))
+          .thenAnswer((_) async => {'notes': null});
 
       final notes = await service.getNotesWithOwners('12345678000199');
 
@@ -59,22 +49,20 @@ void main() {
   });
 
   group('getContacts', () {
-    test('converte a resposta da edge function em uma lista de HubSpotContact',
+    test('converte a resposta do backend em uma lista de HubSpotContact',
         () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(
-                status: 200,
-                data: {
-                  'contacts': [
-                    {
-                      'id': 'contact-1',
-                      'nome': 'Maria',
-                      'telefone': '47999999999',
-                      'email': 'maria@empresa.com',
-                    }
-                  ],
-                },
-              ));
+      when(() => mockApiClient.backend('hubspot', any())).thenAnswer(
+        (_) async => {
+          'contacts': [
+            {
+              'id': 'contact-1',
+              'nome': 'Maria',
+              'telefone': '47999999999',
+              'email': 'maria@empresa.com',
+            }
+          ],
+        },
+      );
 
       final contacts = await service.getContacts('12345678000199');
 
@@ -84,11 +72,8 @@ void main() {
     });
 
     test('retorna lista vazia quando a resposta não tem contatos', () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(
-                status: 200,
-                data: {'contacts': null},
-              ));
+      when(() => mockApiClient.backend('hubspot', any()))
+          .thenAnswer((_) async => {'contacts': null});
 
       final contacts = await service.getContacts('12345678000199');
 
@@ -97,17 +82,16 @@ void main() {
   });
 
   group('addNoteToCompany', () {
-    test('invoca a edge function hubspot com a action e os dados corretos',
-        () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(status: 200, data: {}));
+    test('chama o backend com a action e os dados corretos', () async {
+      when(() => mockApiClient.backend('hubspot', any()))
+          .thenAnswer((_) async => {});
 
       await service.addNoteToCompany(
           cnpj: '12345678000199', noteText: 'Cliente interessado');
 
-      final captured = verify(() => mockFunctions.invoke(
+      final captured = verify(() => mockApiClient.backend(
             'hubspot',
-            body: captureAny(named: 'body'),
+            captureAny(),
           )).captured;
 
       expect(captured.single, {
@@ -120,8 +104,8 @@ void main() {
 
   group('addContactToCompany', () {
     test('omite o campo email quando não informado', () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(status: 200, data: {}));
+      when(() => mockApiClient.backend('hubspot', any()))
+          .thenAnswer((_) async => {});
 
       await service.addContactToCompany(
         cnpj: '12345678000199',
@@ -129,9 +113,9 @@ void main() {
         telefone: '47988887777',
       );
 
-      final captured = verify(() => mockFunctions.invoke(
+      final captured = verify(() => mockApiClient.backend(
             'hubspot',
-            body: captureAny(named: 'body'),
+            captureAny(),
           )).captured;
 
       expect(captured.single, {
@@ -143,8 +127,8 @@ void main() {
     });
 
     test('inclui o campo email quando informado', () async {
-      when(() => mockFunctions.invoke(any(), body: any(named: 'body')))
-          .thenAnswer((_) async => FunctionResponse(status: 200, data: {}));
+      when(() => mockApiClient.backend('hubspot', any()))
+          .thenAnswer((_) async => {});
 
       await service.addContactToCompany(
         cnpj: '12345678000199',
@@ -153,9 +137,9 @@ void main() {
         email: 'joao@empresa.com',
       );
 
-      final captured = verify(() => mockFunctions.invoke(
+      final captured = verify(() => mockApiClient.backend(
             'hubspot',
-            body: captureAny(named: 'body'),
+            captureAny(),
           )).captured;
 
       expect(captured.single, {

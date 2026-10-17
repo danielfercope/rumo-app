@@ -1,15 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:rumo_app/core/services/api_client.dart';
 import 'package:rumo_app/features/company/registration_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-class MockSupabaseClient extends Mock implements SupabaseClient {}
+class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
   late RegistrationService service;
 
   setUp(() {
-    service = RegistrationService(MockSupabaseClient());
+    service = RegistrationService(MockApiClient());
   });
 
   group('isWithinProximity', () {

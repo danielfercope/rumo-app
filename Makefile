@@ -1,6 +1,7 @@
-.PHONY: db-up db-down db-reset psql migrate token
+.PHONY: db-up db-down db-reset psql migrate token data
 
 COMPOSE = docker compose -f docker-compose.backend.yml --env-file infra/.env
+COUNT ?= 40
 
 db-up: ## Sobe db + postgrest + Backend em background
 	$(COMPOSE) up -d
@@ -27,3 +28,6 @@ migrate: ## Reaplica manualmente os arquivos de db/schema (idempotentes via IF N
 
 token: ## Gera um JWT de teste: make token UID=algum-uid
 	@python3 infra/scripts/make_token.py $(UID)
+
+data: ## Popula o banco local com empresas fictícias num raio de 10km de Jaraguá do Sul/SC: make data [COUNT=40]
+	@python3 db/seed/seed_companies.py --count $(COUNT) | $(COMPOSE) exec -T db psql -U postgres -d rumo

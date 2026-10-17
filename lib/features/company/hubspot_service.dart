@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/services/api_client.dart';
 
 class HubSpotNote {
   final String id;
@@ -29,17 +29,21 @@ class HubSpotContact {
   });
 }
 
+// TODO: as 4 ações abaixo hoje devolvem 501 —
+// backend/app/services/hubspot_service.py ainda não implementa a lógica
+// real (ver comentário "BLOQUEIO #2 do plano" lá — a lógica original está
+// numa Edge Function do Supabase com 4 ações que precisa ser extraída
+// antes).
 class HubSpotService {
-  final SupabaseClient _supabase;
+  final ApiClient _apiClient;
 
-  HubSpotService(this._supabase);
+  HubSpotService(this._apiClient);
 
   Future<List<HubSpotNote>> getNotesWithOwners(String cnpj) async {
-    final response = await _supabase.functions.invoke(
+    final data = await _apiClient.backend(
       'hubspot',
-      body: {'action': 'getNotesWithOwners', 'cnpj': cnpj},
-    );
-    final data = response.data as Map<String, dynamic>;
+      {'action': 'getNotesWithOwners', 'cnpj': cnpj},
+    ) as Map<String, dynamic>;
     final notes = (data['notes'] as List?) ?? [];
     return notes
         .map((n) => HubSpotNote(
@@ -52,11 +56,10 @@ class HubSpotService {
   }
 
   Future<List<HubSpotContact>> getContacts(String cnpj) async {
-    final response = await _supabase.functions.invoke(
+    final data = await _apiClient.backend(
       'hubspot',
-      body: {'action': 'getContacts', 'cnpj': cnpj},
-    );
-    final data = response.data as Map<String, dynamic>;
+      {'action': 'getContacts', 'cnpj': cnpj},
+    ) as Map<String, dynamic>;
     final contacts = (data['contacts'] as List?) ?? [];
     return contacts
         .map((c) => HubSpotContact(
@@ -74,37 +77,31 @@ class HubSpotService {
     required String telefone,
     String? email,
   }) async {
-    await _supabase.functions.invoke(
-      'hubspot',
-      body: {
-        'action': 'addContact',
-        'cnpj': cnpj,
-        'nome': nome,
-        'telefone': telefone,
-        if (email != null && email.isNotEmpty) 'email': email,
-      },
-    );
+    await _apiClient.backend('hubspot', {
+      'action': 'addContact',
+      'cnpj': cnpj,
+      'nome': nome,
+      'telefone': telefone,
+      if (email != null && email.isNotEmpty) 'email': email,
+    });
   }
 
   Future<void> addNoteToCompany({
     required String cnpj,
     required String noteText,
   }) async {
-    await _supabase.functions.invoke(
-      'hubspot',
-      body: {
-        'action': 'addNote',
-        'cnpj': cnpj,
-        'noteText': noteText,
-      },
-    );
+    await _apiClient.backend('hubspot', {
+      'action': 'addNote',
+      'cnpj': cnpj,
+      'noteText': noteText,
+    });
   }
 }
 
 // ─── Providers ──────────────────────────────────────────────────────────────
 
 final hubspotServiceProvider = Provider<HubSpotService>((ref) {
-  return HubSpotService(Supabase.instance.client);
+  return HubSpotService(ref.watch(apiClientProvider));
 });
 
 final hubspotNotesProvider = FutureProvider.autoDispose
