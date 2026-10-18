@@ -16,12 +16,11 @@ class RegistrationService {
     return (result as List).isNotEmpty;
   }
 
-  // TODO: hoje devolve 501 — backend/app/services/empresa_aqui_service.py
-  // ainda não implementa a lógica real (ver comentário "BLOQUEIO #2 do
-  // plano" lá — a lógica original está numa Edge Function do Supabase que
-  // precisa ser extraída antes).
-  Future<Map<String, dynamic>> fetchEmpresaAqui(String cnpj) async {
-    final data = await _apiClient.backend('empresa-aqui', {'cnpj': cnpj});
+  // Consulta de dados cadastrais por CNPJ — hoje via BrasilAPI
+  // (backend/app/services/company_lookup_service.py), que devolve o mesmo
+  // shape de chaves que o provedor antigo produzia (ver saveCompany abaixo).
+  Future<Map<String, dynamic>> fetchCompanyData(String cnpj) async {
+    final data = await _apiClient.backend('company-lookup', {'cnpj': cnpj});
     return data as Map<String, dynamic>;
   }
 

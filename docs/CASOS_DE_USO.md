@@ -40,20 +40,18 @@ O `norte.md` exige ao menos três fluxos de uso completos que demonstrem o valor
 1. Usuário navega até a aba "Leads".
 2. Usuário busca uma empresa por nome ou CNPJ (`leadsSearchQueryProvider` → `leadsResultsProvider`).
 3. Usuário abre os detalhes da empresa encontrada.
-4. App busca e exibe notas (`hubspotNotesProvider`) e contatos (`hubspotContactsProvider`) do HubSpot vinculados à empresa.
-5. Usuário adiciona uma nova nota após uma interação comercial, que é sincronizada de volta ao HubSpot.
+4. App busca e exibe notas (`crmNotesProvider`) e contatos (`crmContactsProvider`) do CRM (hoje HubSpot) vinculados à empresa.
+5. Usuário adiciona uma nova nota após uma interação comercial, que é sincronizada de volta ao CRM.
 
 **Valor demonstrado**: integração bidirecional com o CRM sem sair do aplicativo de campo.
 
 ### Fluxo 3 — Cadastro de nova empresa
 
 1. Usuário autorizado (departamento ou nível de acesso compatível) toca em "+ empresa" no `RadarPage`.
-2. **Passo 1**: informa o CNPJ; app consulta a API EmpresaAqui (via backend self-hospedado) e valida que a empresa está a até 2 km da localização atual¹.
+2. **Passo 1**: informa o CNPJ; app consulta os dados cadastrais (via BrasilAPI, por trás do backend self-hospedado) e valida que a empresa está a até 2 km da localização atual.
 3. **Passo 2**: revisa/completa dados do sócio responsável.
 4. **Passo 3**: preenche dados complementares (segmento, produto, observações).
 5. App salva a empresa no backend self-hospedado (tabela `companies`) e envia os dados para o CRM via webhook.
 6. App exibe confirmação de sucesso e atualiza o mapa com o novo marcador.
-
-¹ A consulta à EmpresaAqui está pendente de reimplementação no backend novo (ver `CLAUDE.md`, seção "Backend self-hospedado") — hoje esse passo devolve erro até essa integração ser refeita.
 
 **Valor demonstrado**: elimina digitação manual e garante que só empresas fisicamente visitadas sejam cadastradas.

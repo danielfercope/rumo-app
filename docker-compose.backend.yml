@@ -50,8 +50,8 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       FIREBASE_SERVICE_ACCOUNT_PATH: /app/secrets/firebase-service-account.json
       INTERNAL_JWT_SECRET: ${INTERNAL_JWT_SECRET}
-      HUBSPOT_TOKEN: ${HUBSPOT_TOKEN:-}
-      TOKEN_EMPRESA_AQUI: ${TOKEN_EMPRESA_AQUI:-}
+      CRM_TOKEN: ${CRM_TOKEN:-}
+      CRM_CNPJ_PROPERTY_NAME: ${CRM_CNPJ_PROPERTY_NAME:-cnpj}
     volumes:
       - ./infra/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
     ports:

@@ -1,23 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/core/services/api_client.dart';
-import 'package:rumo_app/features/company/hubspot_service.dart';
+import 'package:rumo_app/features/company/crm_service.dart';
 
 class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
   late MockApiClient mockApiClient;
-  late HubSpotService service;
+  late CrmService service;
 
   setUp(() {
     mockApiClient = MockApiClient();
-    service = HubSpotService(mockApiClient);
+    service = CrmService(mockApiClient);
   });
 
   group('getNotesWithOwners', () {
-    test('converte a resposta do backend em uma lista de HubSpotNote',
-        () async {
-      when(() => mockApiClient.backend('hubspot', any())).thenAnswer(
+    test('converte a resposta do backend em uma lista de CrmNote', () async {
+      when(() => mockApiClient.backend('crm', any())).thenAnswer(
         (_) async => {
           'notes': [
             {
@@ -39,7 +38,7 @@ void main() {
     });
 
     test('retorna lista vazia quando a resposta não tem notas', () async {
-      when(() => mockApiClient.backend('hubspot', any()))
+      when(() => mockApiClient.backend('crm', any()))
           .thenAnswer((_) async => {'notes': null});
 
       final notes = await service.getNotesWithOwners('12345678000199');
@@ -49,9 +48,9 @@ void main() {
   });
 
   group('getContacts', () {
-    test('converte a resposta do backend em uma lista de HubSpotContact',
+    test('converte a resposta do backend em uma lista de CrmContact',
         () async {
-      when(() => mockApiClient.backend('hubspot', any())).thenAnswer(
+      when(() => mockApiClient.backend('crm', any())).thenAnswer(
         (_) async => {
           'contacts': [
             {
@@ -72,7 +71,7 @@ void main() {
     });
 
     test('retorna lista vazia quando a resposta não tem contatos', () async {
-      when(() => mockApiClient.backend('hubspot', any()))
+      when(() => mockApiClient.backend('crm', any()))
           .thenAnswer((_) async => {'contacts': null});
 
       final contacts = await service.getContacts('12345678000199');
@@ -83,14 +82,14 @@ void main() {
 
   group('addNoteToCompany', () {
     test('chama o backend com a action e os dados corretos', () async {
-      when(() => mockApiClient.backend('hubspot', any()))
+      when(() => mockApiClient.backend('crm', any()))
           .thenAnswer((_) async => {});
 
       await service.addNoteToCompany(
           cnpj: '12345678000199', noteText: 'Cliente interessado');
 
       final captured = verify(() => mockApiClient.backend(
-            'hubspot',
+            'crm',
             captureAny(),
           )).captured;
 
@@ -104,7 +103,7 @@ void main() {
 
   group('addContactToCompany', () {
     test('omite o campo email quando não informado', () async {
-      when(() => mockApiClient.backend('hubspot', any()))
+      when(() => mockApiClient.backend('crm', any()))
           .thenAnswer((_) async => {});
 
       await service.addContactToCompany(
@@ -114,7 +113,7 @@ void main() {
       );
 
       final captured = verify(() => mockApiClient.backend(
-            'hubspot',
+            'crm',
             captureAny(),
           )).captured;
 
@@ -127,7 +126,7 @@ void main() {
     });
 
     test('inclui o campo email quando informado', () async {
-      when(() => mockApiClient.backend('hubspot', any()))
+      when(() => mockApiClient.backend('crm', any()))
           .thenAnswer((_) async => {});
 
       await service.addContactToCompany(
@@ -138,7 +137,7 @@ void main() {
       );
 
       final captured = verify(() => mockApiClient.backend(
-            'hubspot',
+            'crm',
             captureAny(),
           )).captured;
 

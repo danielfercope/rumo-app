@@ -9,12 +9,11 @@
 | Autenticação | Firebase Auth (+ Crashlytics e Analytics) |
 | Backend de dados | Self-hospedado: PostgreSQL + PostGIS exposto via PostgREST, com serviço Python (FastAPI, padrão MVC) auxiliar — atrás de um proxy Caddy |
 | Mapa | Google Maps Flutter |
-| CRM | HubSpot API v3¹ |
-| API externa | EmpresaAqui (dados de CNPJ)¹ |
-| Deploy | Docker + nginx (Flutter Web) + Docker Compose (backend self-hospedado)² |
+| CRM | HubSpot (via `CrmService` — nome agnóstico de fornecedor, ver [Backend self-hospedado](#backend-self-hospedado)) |
+| API externa | BrasilAPI (dados de CNPJ, via `CompanyLookupService`) |
+| Deploy | Docker + nginx (Flutter Web) + Docker Compose (backend self-hospedado)¹ |
 
-¹ Integração ainda não implementada no backend novo — ver [Backend self-hospedado](#backend-self-hospedado). O roadmap (`plano_geral.md`) prevê substituir a EmpresaAqui por BrasilAPI (ou equivalente); ainda não começou.
-² Deploy em produção via AWS (EC2 + CloudFormation) está no roadmap (`plano_geral.md`), ainda não implementado — hoje o backend só roda local/self-hospedado via Docker Compose.
+¹ Deploy em produção via AWS (EC2 + CloudFormation) está no roadmap (`plano_geral.md`), ainda não implementado — hoje o backend só roda local/self-hospedado via Docker Compose.
 
 ---
 
@@ -60,7 +59,7 @@ lib/
     │   └── presentation/
     │       ├── radar_viewmodel.dart   # Estado de UI do bottom sheet
     │       ├── filter_modal.dart      # Modal de filtros avançados
-    │       └── company_details_modal.dart # Detalhes da empresa + HubSpot
+    │       └── company_details_modal.dart # Detalhes da empresa + CRM
     │
     ├── leads/                         # Feature de busca textual de leads
     │   ├── leads_page.dart
@@ -68,9 +67,9 @@ lib/
     │
     └── company/                       # Cadastro de novas empresas
         ├── add_company_modal.dart     # Multi-step modal (3 passos)
-        ├── hubspot_service.dart       # Integração HubSpot via ApiClient — hoje devolve
-        │                              # 501 (não implementado no backend, ver nota abaixo)
-        ├── registration_service.dart  # EmpresaAqui (via ApiClient, 501 por ora) +
+        ├── crm_service.dart           # Integração com o CRM via ApiClient (nome
+        │                              # agnóstico de fornecedor — hoje é o HubSpot)
+        ├── registration_service.dart  # Consulta de CNPJ (via ApiClient) +
         │                              # geocoding + upsert em `companies` via ApiClient
         └── constants.dart             # Dropdowns: departamentos, setores, regimes, etc.
 ```
@@ -98,8 +97,8 @@ graph TD
     SEARCH_Q[leadsSearchQueryProvider<br/>StateProvider&lt;LeadsSearchQuery&gt;]
     LEADS[leadsResultsProvider<br/>FutureProvider&lt;List&lt;Company&gt;?&gt;]
 
-    HS_NOTES[hubspotNotesProvider.family<br/>FutureProvider&lt;List&lt;HubSpotNote&gt;&gt;]
-    HS_CONTACTS[hubspotContactsProvider.family<br/>FutureProvider&lt;List&lt;HubSpotContact&gt;&gt;]
+    HS_NOTES[crmNotesProvider.family<br/>FutureProvider&lt;List&lt;CrmNote&gt;&gt;]
+    HS_CONTACTS[crmContactsProvider.family<br/>FutureProvider&lt;List&lt;CrmContact&gt;&gt;]
 
     LOC --> COMPANIES
     FILTERS --> COMPANIES
@@ -147,10 +146,10 @@ flowchart TD
     RADAR -->|filtros| FILTER_MODAL[FilterModal]
     RADAR -->|+ empresa| ADD[AddCompanyModal]
 
-    DETAILS -->|HubSpot| HS_NOTES_VIEW[Notas + Contatos]
+    DETAILS -->|CRM| HS_NOTES_VIEW[Notas + Contatos]
     DETAILS -->|rota| MAPS[Google Maps externo]
 
-    ADD -->|step 1| CNPJ_STEP[CNPJ + EmpresaAqui]
+    ADD -->|step 1| CNPJ_STEP[CNPJ + BrasilAPI]
     ADD -->|step 2| SOCIO_STEP[Dados sócio]
     ADD -->|step 3| COMP_STEP[Dados complementares]
     COMP_STEP -->|salvar| BACKEND[(Backend self-hospedado)]
@@ -198,7 +197,7 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` |
 | `ensure_profile` | nome, departamento | Cria/retorna o `profile` do usuário autenticado |
 
-O cadastro de uma nova empresa (`RegistrationService.saveCompany`) grava direto em `companies` via `ApiClient.upsert` (permitido por RLS para quem pode cadastrar — ver `can_add_company()`). O enriquecimento de dados de CNPJ (EmpresaAqui) e a integração com o HubSpot passam pelo backend Python — ver seção abaixo.
+O cadastro de uma nova empresa (`RegistrationService.saveCompany`) grava direto em `companies` via `ApiClient.upsert` (permitido por RLS para quem pode cadastrar — ver `can_add_company()`). O enriquecimento de dados de CNPJ e a integração com o CRM passam pelo backend Python — ver seção abaixo.
 
 ---
 
@@ -210,16 +209,18 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 |---|---|
 | `db` | PostgreSQL + PostGIS — schema aplicado a partir de `db/schema/*.sql` |
 | `postgrest` | Expõe o schema como API REST (tabelas em `/rest/<tabela>`, RPCs em `/rest/rpc/<fn>`) |
-| `backend` | Serviço Python (FastAPI) — troca o idToken do Firebase por um JWT interno, e expõe `/empresa-aqui` e `/hubspot` |
+| `backend` | Serviço Python (FastAPI) — troca o idToken do Firebase por um JWT interno, e expõe `/company-lookup` e `/crm` |
 | `caddy` | Reverse proxy único, ponto de entrada em `localhost:8080` — roteia `/rest/*` e `/backend/*` |
 
 **Autenticação**: o app troca o `idToken` do Firebase por um JWT interno (`POST /backend/auth/exchange`), que o PostgREST usa pra aplicar RLS via `SET ROLE` (`auth_uid()` em `db/schema/003_roles_rls.sql`).
 
-**Status de implementação**:
-- ✅ Autenticação, perfil, busca/radar de empresas, tracking de localização e cadastro de empresa (`companies`) funcionam de ponta a ponta contra esse backend.
-- ⚠️ `/empresa-aqui` e `/hubspot` (`backend/app/services/empresa_aqui_service.py`, `hubspot_service.py`) são stubs intencionais que sempre devolvem **501 Not Implemented** — a lógica real das antigas Edge Functions precisa ser extraída e reimplementada ali antes de funcionar (comentário no próprio código: *"BLOQUEIO #2 do plano"*). `RegistrationService.fetchEmpresaAqui` e `HubSpotService` já chamam esses endpoints; vão continuar devolvendo erro até esse trabalho ser feito.
+**Integrações externas** — nomeadas de forma agnóstica de fornecedor (`CompanyLookupService`, `CrmService`), pra trocar de provedor sem reescrever a estrutura:
+- `/company-lookup` (`backend/app/services/company_lookup_service.py`) — hoje consulta a [BrasilAPI](https://brasilapi.com.br/) (pública, gratuita, sem token). Devolve o mesmo shape de chaves que o provedor antigo produzia, pra não exigir mudança nenhuma em `RegistrationService.saveCompany`/`sendToWebhook`.
+- `/crm` (`backend/app/services/crm_service.py`) — hoje integra com o HubSpot (API v3/v4), localizando a Company pelo CNPJ via uma propriedade customizada cujo nome interno é configurável (`CRM_CNPJ_PROPERTY_NAME`, porque é criada manualmente na conta do CRM). 4 ações: `getNotesWithOwners`, `getContacts`, `addContact`, `addNote`.
 
-Variáveis do backend ficam em `infra/.env` (copiar de `infra/.env.example`, gitignored) — distintas do `.env` do app Flutter.
+Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
+
+Variáveis do backend ficam em `infra/.env` (copiar de `infra/.env.example`, gitignored) — distintas do `.env` do app Flutter. `CRM_CNPJ_PROPERTY_NAME` deve ser ajustada depois que a propriedade de CNPJ for criada no HubSpot.
 
 ---
 
@@ -234,8 +235,6 @@ Acessadas em código via `AppConfig` (`lib/core/app_config.dart`).
 | `SERVER_WEB_CLIENT_ID` | OAuth Google (Web / servidor) |
 | `CLIENT_ID` | OAuth Google (iOS) |
 | `GOOGLE_API_KEY` | Google Maps + Geocoding (no iOS nativo, precisa ser duplicada em `ios/Flutter/Secrets.xcconfig` — ver "Executando o projeto localmente") |
-| `TOKEN_EMPRESA_AQUI` | API de dados de CNPJ |
-| `HUBSPOT_TOKEN` | Token Bearer do HubSpot CRM |
 | `URL_WEBHOOK_CRM` | Webhook de CRM chamado após cadastro de empresa |
 
 > O backend self-hospedado tem seu próprio arquivo de variáveis (`infra/.env`, a partir de `infra/.env.example`) — não listado aqui, que é só do app Flutter.

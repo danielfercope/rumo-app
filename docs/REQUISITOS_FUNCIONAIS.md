@@ -12,7 +12,7 @@ Lista de requisitos funcionais do aplicativo, derivada das funcionalidades imple
 | RF06 | O sistema deve exibir os detalhes de uma empresa ao selecionar seu marcador no mapa. |
 | RF07 | O sistema deve permitir traçar rota até a empresa selecionada, delegando para um aplicativo externo de mapas. |
 | RF08 | O sistema deve exibir e permitir adicionar notas e contatos do CRM (HubSpot) vinculados a uma empresa. |
-| RF09 | O sistema deve permitir o cadastro de uma nova empresa a partir do CNPJ, buscando automaticamente os dados cadastrais na API EmpresaAqui. |
+| RF09 | O sistema deve permitir o cadastro de uma nova empresa a partir do CNPJ, buscando automaticamente os dados cadastrais na BrasilAPI. |
 | RF10 | O sistema deve validar que a empresa sendo cadastrada está dentro de um raio de proximidade aceitável (2 km) em relação à localização do usuário no momento do cadastro. |
 | RF11 | O sistema deve enviar os dados da empresa recém-cadastrada para o CRM corporativo via webhook. |
 | RF12 | O sistema deve restringir o cadastro de empresas a usuários dos departamentos Pré-vendas, Gestão ou Administração Interna, ou com nível de acesso administrador. |
