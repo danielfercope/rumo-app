@@ -8,3 +8,15 @@ class UnauthenticatedError(Exception):
 
 class NotImplementedIntegrationError(Exception):
     """Integração externa ainda sem lógica real implementada."""
+
+
+class CnpjNotFoundError(Exception):
+    """CNPJ não encontrado no provedor de consulta de dados cadastrais."""
+
+
+class CrmCompanyNotFoundError(Exception):
+    """Nenhuma empresa no CRM corresponde ao CNPJ informado."""
+
+
+class UpstreamIntegrationError(Exception):
+    """Falha de rede ou de resposta ao chamar uma integração externa."""

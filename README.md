@@ -43,7 +43,7 @@ Certifique-se de ter instalado em sua máquina:
 * [Flutter SDK](https://docs.flutter.dev/get-started/install) (versão mais recente)
 * Uma IDE como VS Code ou Android Studio
 * [Docker](https://www.docker.com/) + Docker Compose (pra rodar o backend self-hospedado localmente)
-* Projeto Firebase configurado (Auth, Crashlytics, Analytics) e chaves das APIs do Google Maps/Geocoding, HubSpot e EmpresaAqui
+* Projeto Firebase configurado (Auth, Crashlytics, Analytics) e chaves das APIs do Google Maps/Geocoding e do HubSpot (CRM) — a consulta de CNPJ usa a BrasilAPI, pública e sem necessidade de chave
 * Para rodar em iOS: um **Mac com Xcode**, idealmente com um **iPhone físico** disponível pra testar (o simulador não reproduz fielmente permissões de localização em background)
 
 ### Passo a Passo

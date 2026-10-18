@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     internal_jwt_secret: str
     internal_jwt_ttl_seconds: int = 3600
 
-    hubspot_token: str = ""
-    token_empresa_aqui: str = ""
+    crm_token: str = ""
+    # Nome interno (não o label) da propriedade customizada de CNPJ no objeto
+    # Company do CRM — criada manualmente na conta, não assumir um valor fixo.
+    crm_cnpj_property_name: str = "cnpj"
 
 
 settings = Settings()

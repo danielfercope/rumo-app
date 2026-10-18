@@ -6,10 +6,58 @@ import 'package:rumo_app/features/company/registration_service.dart';
 class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
+  late MockApiClient mockApiClient;
   late RegistrationService service;
 
   setUp(() {
-    service = RegistrationService(MockApiClient());
+    mockApiClient = MockApiClient();
+    service = RegistrationService(mockApiClient);
+  });
+
+  group('cnpjExists', () {
+    test('retorna true quando a busca em companies devolve algum resultado',
+        () async {
+      when(() => mockApiClient.get('companies', query: any(named: 'query')))
+          .thenAnswer((_) async => [
+                {'id': '1'}
+              ]);
+
+      final result = await service.cnpjExists('12345678000199');
+
+      expect(result, isTrue);
+      final query = verify(() => mockApiClient.get('companies',
+              query: captureAny(named: 'query')))
+          .captured
+          .single as Map;
+      expect(query['cnpj'], 'eq.12345678000199');
+    });
+
+    test('retorna false quando a busca não encontra nada', () async {
+      when(() => mockApiClient.get('companies', query: any(named: 'query')))
+          .thenAnswer((_) async => []);
+
+      final result = await service.cnpjExists('12345678000199');
+
+      expect(result, isFalse);
+    });
+  });
+
+  group('fetchCompanyData', () {
+    test("chama o backend em 'company-lookup' com o cnpj e devolve o map",
+        () async {
+      when(() => mockApiClient.backend('company-lookup', any())).thenAnswer(
+        (_) async => {'cnpj': '12345678000199', 'razao': 'Empresa Teste'},
+      );
+
+      final result = await service.fetchCompanyData('12345678000199');
+
+      expect(result['razao'], 'Empresa Teste');
+      final captured = verify(() =>
+              mockApiClient.backend('company-lookup', captureAny()))
+          .captured
+          .single as Map;
+      expect(captured['cnpj'], '12345678000199');
+    });
   });
 
   group('isWithinProximity', () {

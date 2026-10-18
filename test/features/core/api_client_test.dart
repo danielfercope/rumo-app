@@ -152,12 +152,12 @@ void main() {
               headers: any(named: 'headers'), body: any(named: 'body')))
           .thenAnswer((_) async => http.Response('{}', 200));
 
-      await apiClient.backend('hubspot', {'action': 'addNote'});
+      await apiClient.backend('crm', {'action': 'addNote'});
 
       final captured = verify(() => mockClient.post(captureAny(),
           headers: any(named: 'headers'), body: any(named: 'body'))).captured;
       final uri = captured.single as Uri;
-      expect(uri.path, '/backend/hubspot');
+      expect(uri.path, '/backend/crm');
     });
   });
 }

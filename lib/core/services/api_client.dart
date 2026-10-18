@@ -141,7 +141,7 @@ class ApiClient {
     return _decode(response);
   }
 
-  /// Chama o Backend (empresa-aqui, hubspot) em vez de uma Edge Function.
+  /// Chama o Backend (ex.: company-lookup, crm) em vez de uma Edge Function.
   Future<dynamic> backend(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$baseUrl/backend/$path');
     final response = await _httpClient.post(uri,

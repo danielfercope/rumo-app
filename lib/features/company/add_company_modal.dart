@@ -18,7 +18,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
   bool _loading = false;
   String? _errorMessage;
 
-  // Dados retornados pela API EmpresaAqui
+  // Dados cadastrais retornados pela consulta de CNPJ
   Map<String, dynamic>? _dadosApi;
   double? _empresaLat;
   double? _empresaLon;
@@ -126,7 +126,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
         return;
       }
 
-      final dadosApi = await service.fetchEmpresaAqui(cnpj);
+      final dadosApi = await service.fetchCompanyData(cnpj);
 
       final endereco =
           '${dadosApi['log_tipo'] ?? ''} ${dadosApi['log_nome'] ?? ''}, ${dadosApi['log_num'] ?? ''} - ${dadosApi['log_bairro'] ?? ''}, ${dadosApi['log_municipio'] ?? ''} - ${dadosApi['log_uf'] ?? ''}';
@@ -322,7 +322,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Informe o CNPJ para buscar os dados da empresa na EmpresaAqui e validar a proximidade (máx. 2 km).',
+              'Informe o CNPJ para buscar os dados da empresa e validar a proximidade (máx. 2 km).',
               style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 13),
             ),
             const SizedBox(height: 20),
