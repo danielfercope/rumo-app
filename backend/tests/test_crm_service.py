@@ -78,6 +78,46 @@ async def test_get_notes_with_owners_resolve_nome_do_owner(service):
 
 
 @respx.mock
+async def test_get_notes_with_owners_aceita_timestamp_iso_do_hubspot(service):
+    # O HubSpot recebe hs_timestamp como epoch ms na criação, mas devolve
+    # ISO-8601 na leitura — confirmado contra a API real.
+    _mock_company_search(found=True)
+    respx.get(
+        f"{BASE_URL}/crm/v4/objects/companies/{COMPANY_ID}/associations/notes"
+    ).mock(return_value=httpx.Response(200, json={"results": [{"toObjectId": "n1"}]}))
+    respx.post(f"{BASE_URL}/crm/v3/objects/notes/batch/read").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "n1",
+                        "properties": {
+                            "hs_note_body": "Nota de teste",
+                            "hs_timestamp": "2026-10-21T00:19:30.863Z",
+                            "hubspot_owner_id": None,
+                        },
+                    }
+                ]
+            },
+        )
+    )
+
+    result = await service.get_notes_with_owners(
+        CrmRequest(action="getNotesWithOwners", cnpj=CNPJ)
+    )
+
+    assert result["notes"] == [
+        {
+            "id": "n1",
+            "body": "Nota de teste",
+            "timestamp": "2026-10-21T00:19:30.863Z",
+            "ownerName": None,
+        }
+    ]
+
+
+@respx.mock
 async def test_get_contacts_concatena_nome(service):
     _mock_company_search(found=True)
     respx.get(

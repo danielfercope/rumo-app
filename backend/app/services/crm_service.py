@@ -10,8 +10,14 @@ from ..schemas import CrmRequest
 BASE_URL = "https://api.hubapi.com"
 
 
-def _epoch_ms_to_iso(epoch_ms: str | int) -> str:
-    dt = datetime.fromtimestamp(int(epoch_ms) / 1000, tz=timezone.utc)
+def _normalize_timestamp(value: str | int) -> str:
+    # hs_timestamp é enviado como epoch ms na criação, mas o HubSpot devolve
+    # ISO-8601 na leitura (confirmado contra a API real) — aceita os dois.
+    try:
+        epoch_ms = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    dt = datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
     return dt.isoformat().replace("+00:00", "Z")
 
 
@@ -73,7 +79,7 @@ class CrmService:
             {
                 "id": r["id"],
                 "body": r["properties"].get("hs_note_body") or "",
-                "timestamp": _epoch_ms_to_iso(r["properties"]["hs_timestamp"]),
+                "timestamp": _normalize_timestamp(r["properties"]["hs_timestamp"]),
                 "ownerName": self._owner_cache.get(
                     r["properties"].get("hubspot_owner_id") or ""
                 ),
