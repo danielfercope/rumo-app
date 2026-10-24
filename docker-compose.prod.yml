@@ -1,0 +1,29 @@
+# Override de produção (AWS) pro docker-compose.backend.yml — usado junto dele:
+#   docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml --env-file infra/.env up -d --build
+#
+# Diferenças do ambiente local:
+# - dados do Postgres e certificados do Caddy em /mnt/rumo-data (volume EBS dedicado,
+#   fora do volume root da instância — sobrevive a troca/substituição da instância);
+# - portas internas (5432/3000/4000) não publicadas — só acessíveis entre os containers;
+# - Caddy expõe 80/443 (TLS automático via Let's Encrypt), não 8080.
+
+services:
+  db:
+    volumes:
+      - /mnt/rumo-data/postgres:/var/lib/postgresql/data
+      - ./db/schema:/docker-entrypoint-initdb.d:ro
+    ports: []
+
+  postgrest:
+    ports: []
+
+  backend:
+    ports: []
+
+  caddy:
+    volumes:
+      - ./infra/Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - /mnt/rumo-data/caddy:/data
+    ports:
+      - "80:80"
+      - "443:443"

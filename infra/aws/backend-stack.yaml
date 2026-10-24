@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Infraestrutura minima pra rodar o backend self-hospedado do RUMO (Postgres+PostGIS,
+  PostgREST, backend Python/FastAPI, Caddy) numa unica instancia EC2, com os segredos
+  vindos do Secrets Manager e acesso administrativo via SSM Session Manager (sem SSH).
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC onde a instancia vai rodar (ex: a VPC default da conta)"
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet publica dentro da VpcId acima
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: AZ da SubnetId acima (precisa bater — e usada pelo volume EBS dedicado)
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  RepoBranch:
+    Type: String
+    Default: dev
+    Description: Branch do GitHub a ser clonada no boot (repo publico, sem credencial)
+  DomainName:
+    Type: String
+    Default: rumo-app.duckdns.org
+    Description: Hostname usado pelo Caddy pra emitir o certificado TLS automatico
+
+Resources:
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Só 80/443 publicos — nenhuma porta administrativa exposta (acesso via SSM)
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: rumo-app-backend-sg
+
+  BackendInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rumo-app-backend-instance-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-rumo-app-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rumo-app/backend-env-*"
+                  - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rumo-app/firebase-service-account-*"
+
+  BackendInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BackendInstanceRole
+
+  DataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Snapshot
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone
+      Size: 15
+      VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: rumo-app-backend-data
+
+  BackendInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: t3.micro
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref BackendSecurityGroup
+      IamInstanceProfile: !Ref BackendInstanceProfile
+      Tags:
+        - Key: Name
+          Value: rumo-app-backend
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash
+              set -euxo pipefail
+              exec > /var/log/rumo-app-userdata.log 2>&1
+
+              dnf update -y
+              dnf install -y docker git jq
+
+              systemctl enable --now docker
+
+              mkdir -p /usr/local/lib/docker/cli-plugins
+              curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+                -o /usr/local/lib/docker/cli-plugins/docker-compose
+              chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+              # Swap de 1 GB — mitigacao de OOM no t3.micro (1 GB RAM) rodando
+              # Postgres+PostGIS+PostgREST+FastAPI+Caddy simultaneamente.
+              if [ ! -f /swapfile ]; then
+                fallocate -l 1G /swapfile
+                chmod 600 /swapfile
+                mkswap /swapfile
+                swapon /swapfile
+                echo '/swapfile none swap sw 0 0' >> /etc/fstab
+              fi
+
+              # Monta o volume EBS dedicado (dados do Postgres), achado via symlink
+              # estavel por volume-id — nao assume nvme1n1 (a ordem de device pode variar).
+              VOLUME_SYMLINK="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$(echo ${DataVolumeId} | sed 's/-//')"
+              for i in $(seq 1 30); do
+                [ -e "$VOLUME_SYMLINK" ] && break
+                sleep 2
+              done
+              mkdir -p /mnt/rumo-data/postgres /mnt/rumo-data/caddy
+              if ! blkid "$VOLUME_SYMLINK" > /dev/null 2>&1; then
+                mkfs -t ext4 "$VOLUME_SYMLINK"
+              fi
+              DATA_UUID=$(blkid -s UUID -o value "$VOLUME_SYMLINK")
+              grep -q "$DATA_UUID" /etc/fstab || echo "UUID=$DATA_UUID /mnt/rumo-data ext4 defaults,nofail 0 2" >> /etc/fstab
+              mount /mnt/rumo-data || mount -a
+              mkdir -p /mnt/rumo-data/postgres /mnt/rumo-data/caddy
+
+              git clone --branch ${RepoBranch} --depth 1 https://github.com/danielfercope/rumo-app.git /opt/rumo-app
+              cd /opt/rumo-app
+
+              aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id rumo-app/backend-env \
+                --query SecretString --output text | jq -r 'to_entries[]|"\(.key)=\(.value)"' > infra/.env
+              aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id rumo-app/firebase-service-account \
+                --query SecretString --output text > infra/firebase-service-account.json
+              chmod 600 infra/.env infra/firebase-service-account.json
+
+              sed -i "s/rumo-app.duckdns.org/${DomainName}/" infra/Caddyfile.production
+
+              docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml \
+                --env-file infra/.env up -d --build
+            - DataVolumeId: !Ref DataVolume
+
+  DataVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref BackendInstance
+      VolumeId: !Ref DataVolume
+      Device: /dev/sdf
+
+  BackendEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref BackendInstance
+      Tags:
+        - Key: Name
+          Value: rumo-app-backend-eip
+
+Outputs:
+  InstanceId:
+    Value: !Ref BackendInstance
+  PublicIp:
+    Value: !Ref BackendEip
+  SecurityGroupId:
+    Value: !Ref BackendSecurityGroup

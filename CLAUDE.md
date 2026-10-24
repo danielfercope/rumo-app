@@ -13,7 +13,9 @@
 | API externa | BrasilAPI (dados de CNPJ, via `CompanyLookupService`) |
 | Deploy | Docker + nginx (Flutter Web) + Docker Compose (backend self-hospedado)¹ |
 
-¹ Deploy em produção via AWS (EC2 + CloudFormation) está no roadmap (`plano_geral.md`), ainda não implementado — hoje o backend só roda local/self-hospedado via Docker Compose.
+¹ Backend self-hospedado roda local via Docker Compose, ou em produção numa instância EC2
+`t3.micro` provisionada via CloudFormation (`infra/aws/backend-stack.yaml`) — ver seção
+"Backend self-hospedado" mais abaixo.
 
 ---
 
@@ -270,7 +272,28 @@ cp infra/.env.example infra/.env   # preencher segredos antes de tudo
 docker-compose -f docker-compose.backend.yml up -d
 ```
 
-Deploy em produção (AWS — EC2 + CloudFormation) está no roadmap (`plano_geral.md`), ainda não implementado.
+Deploy em produção (AWS — 1 instância EC2 `t3.micro` + CloudFormation, acesso via SSM
+Session Manager, sem SSH): template em `infra/aws/backend-stack.yaml`.
+
+```bash
+# Segredos (uma vez, antes do primeiro deploy)
+aws secretsmanager create-secret --name rumo-app/backend-env --secret-string file://infra/.env.json
+aws secretsmanager create-secret --name rumo-app/firebase-service-account --secret-string file://infra/firebase-service-account.json
+
+# Provisiona a infra (EC2 + EIP + volume de dados dedicado + Security Group)
+aws cloudformation deploy --template-file infra/aws/backend-stack.yaml \
+  --stack-name rumo-app-backend --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides VpcId=<vpc-id> SubnetId=<subnet-id> AvailabilityZone=<az>
+
+# Redeploy manual (atualização de código, via SSM — sem SSH)
+make deploy INSTANCE_ID=<instance-id>
+```
+
+O UserData clona a branch `dev` do repositório (público) no boot, busca os segredos no
+Secrets Manager e sobe a stack com `docker-compose.backend.yml` + `docker-compose.prod.yml`
+(override que publica só 80/443 via Caddy — as portas internas de banco/PostgREST/backend
+não ficam expostas). TLS automático via Let's Encrypt, usando um subdomínio DuckDNS
+gratuito (`rumo-app.duckdns.org` por padrão — parâmetro `DomainName` do template).
 
 ---
 
