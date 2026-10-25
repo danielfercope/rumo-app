@@ -26,7 +26,6 @@ class UserProfile {
         nivelAcesso: json['nivel_acesso'] as String? ?? 'user',
       );
 
-  bool get isExecutivo => departamento == 'Executivo';
   bool get isGuest => nivelAcesso == 'guest';
 
   bool get canAddCompany =>

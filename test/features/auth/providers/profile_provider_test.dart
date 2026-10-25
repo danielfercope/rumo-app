@@ -77,27 +77,7 @@ void main() {
     });
   });
 
-  group('UserProfile.isExecutivo / isGuest', () {
-    test('isExecutivo é true apenas para departamento "Executivo"', () {
-      const executivo = UserProfile(
-        id: '1',
-        email: 'a@a.com',
-        nome: 'A',
-        departamento: 'Executivo',
-        nivelAcesso: 'user',
-      );
-      const outro = UserProfile(
-        id: '1',
-        email: 'a@a.com',
-        nome: 'A',
-        departamento: 'Gestão',
-        nivelAcesso: 'user',
-      );
-
-      expect(executivo.isExecutivo, isTrue);
-      expect(outro.isExecutivo, isFalse);
-    });
-
+  group('UserProfile.isGuest', () {
     test('isGuest é true apenas quando nivelAcesso é "guest"', () {
       const guest = UserProfile(
         id: '1',
