@@ -30,7 +30,7 @@ Resources:
   BackendSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Só 80/443 publicos — nenhuma porta administrativa exposta (acesso via SSM)
+      GroupDescription: "So 80/443 publicos - nenhuma porta administrativa exposta (acesso via SSM)"
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -114,8 +114,12 @@ Resources:
 
               systemctl enable --now docker
 
+              # Versao fixa (nao "latest"): o Amazon Linux 2023 instala buildx 0.12.x via
+              # dnf, e versoes recentes do docker-compose (v5+) exigem buildx >= 0.17,
+              # o que quebra "docker compose up --build" com erro "requires buildx 0.17.0
+              # or later" - confirmado na pratica num deploy real.
               mkdir -p /usr/local/lib/docker/cli-plugins
-              curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+              curl -fsSL "https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-x86_64" \
                 -o /usr/local/lib/docker/cli-plugins/docker-compose
               chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 

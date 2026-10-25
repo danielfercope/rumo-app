@@ -12,18 +12,18 @@ services:
     volumes:
       - /mnt/rumo-data/postgres:/var/lib/postgresql/data
       - ./db/schema:/docker-entrypoint-initdb.d:ro
-    ports: []
+    ports: !reset []
 
   postgrest:
-    ports: []
+    ports: !reset []
 
   backend:
-    ports: []
+    ports: !reset []
 
   caddy:
     volumes:
       - ./infra/Caddyfile.production:/etc/caddy/Caddyfile:ro
       - /mnt/rumo-data/caddy:/data
-    ports:
+    ports: !override
       - "80:80"
       - "443:443"
