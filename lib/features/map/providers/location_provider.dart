@@ -17,7 +17,17 @@ Future<Position> _requestPosition() async {
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      // No Flutter Web, requestPermission() dispara o prompt nativo do
+      // navegador e só resolve quando ele for respondido — sem timeout
+      // aqui, um prompt ignorado/perdido (foco em outra aba, bloqueado
+      // pelo navegador etc.) prende o mapa carregando pra sempre.
+      permission = await Geolocator.requestPermission().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          debugPrint('GPS: timeout ao pedir permissão — usando posição padrão');
+          return LocationPermission.denied;
+        },
+      );
     }
 
     if (permission == LocationPermission.denied ||

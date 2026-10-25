@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,6 +15,11 @@ class _FakeGeolocator extends GeolocatorPlatform {
   Object? positionError;
   Future<Position> Function()? positionBuilder;
 
+  /// Quando setado, requestPermission() devolve esse Future em vez de
+  /// afterRequest — usado pra simular um prompt do navegador nunca
+  /// respondido (nunca completa sozinho).
+  Completer<LocationPermission>? requestPermissionCompleter;
+
   @override
   Future<bool> isLocationServiceEnabled() async => serviceEnabled;
 
@@ -19,7 +27,8 @@ class _FakeGeolocator extends GeolocatorPlatform {
   Future<LocationPermission> checkPermission() async => permission;
 
   @override
-  Future<LocationPermission> requestPermission() async => afterRequest;
+  Future<LocationPermission> requestPermission() =>
+      requestPermissionCompleter?.future ?? Future.value(afterRequest);
 
   @override
   Future<Position> getCurrentPosition({LocationSettings? locationSettings}) {
@@ -93,5 +102,24 @@ void main() {
   test('usa o fallback quando o GPS lança erro', () async {
     geo.positionError = Exception('falhou');
     expectFallback(await read());
+  });
+
+  test(
+      'usa o fallback quando o pedido de permissão nunca é respondido '
+      '(prompt do navegador perdido/ignorado) — sem isso o mapa fica '
+      'carregando pra sempre', () {
+    fakeAsync((async) {
+      geo.permission = LocationPermission.denied;
+      geo.requestPermissionCompleter = Completer<LocationPermission>();
+
+      Position? result;
+      container.read(locationProvider.future).then((p) => result = p);
+
+      async.elapse(const Duration(seconds: 16));
+      async.flushMicrotasks();
+
+      expect(result, isNotNull);
+      expectFallback(result!);
+    });
   });
 }
