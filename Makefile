@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-reset psql migrate token data
+.PHONY: db-up db-down db-reset psql migrate token data deploy
 
 COMPOSE = docker compose -f docker-compose.backend.yml --env-file infra/.env
 COUNT ?= 40
@@ -31,3 +31,9 @@ token: ## Gera um JWT de teste: make token UID=algum-uid
 
 data: ## Popula o banco local com empresas fictícias num raio de 10km de Jaraguá do Sul/SC: make data [COUNT=40]
 	@python3 db/seed/seed_companies.py --count $(COUNT) | $(COMPOSE) exec -T db psql -U postgres -d rumo
+
+deploy: ## Redeploy manual em produção via SSM (requer AWS CLI configurado + INSTANCE_ID): make deploy INSTANCE_ID=i-xxxx
+	aws ssm send-command \
+		--instance-ids $(INSTANCE_ID) \
+		--document-name "AWS-RunShellScript" \
+		--parameters 'commands=["cd /opt/rumo-app && git pull && docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml --env-file infra/.env up -d --build"]'

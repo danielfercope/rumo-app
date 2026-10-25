@@ -1,0 +1,14 @@
+# Caddy em produção (AWS) — TLS automático via Let's Encrypt (ACME HTTP-01 na porta 80,
+# serve HTTPS na 443). O hostname abaixo é substituído pelo UserData do CloudFormation
+# (infra/aws/backend-stack.yaml) com o valor real do parâmetro DomainName, caso seja
+# diferente deste default.
+
+rumo-app.duckdns.org {
+	handle_path /rest/* {
+		reverse_proxy postgrest:3000
+	}
+
+	handle_path /backend/* {
+		reverse_proxy backend:4000
+	}
+}
