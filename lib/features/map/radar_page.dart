@@ -34,6 +34,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   LatLng? _lastCameraPosition;
   bool _pendingAutoFit = false;
 
+  // Últimos dados exibidos, pra reenquadrar quando um novo mapa for criado
+  List<Company> _lastMappable = const [];
+  LatLng? _lastUserLatLng;
+
   final LatLng _defaultCenter = const LatLng(-26.4843, -49.0717);
 
   BitmapDescriptor? _iconLibria;
@@ -104,6 +108,19 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
     _mapControllerReady = true;
+    // O mapa é desmontado durante o reload (filtros mudando); o reenquadre
+    // pendente só pode rodar quando o novo controller existir.
+    if (_pendingAutoFit && _lastMappable.isNotEmpty) {
+      _pendingAutoFit = false;
+      _fitToMarkers(_lastMappable, _lastUserLatLng);
+    }
+  }
+
+  /// Indicador de carregamento. O GoogleMap sai da árvore enquanto ele está
+  /// visível, então o controller atual deixa de ser válido.
+  Widget _buildLoading() {
+    _mapControllerReady = false;
+    return const Center(child: CupertinoActivityIndicator());
   }
 
   void _syncCameraToPosition(LatLng target) {
@@ -258,23 +275,23 @@ class _RadarPageState extends ConsumerState<RadarPage> {
         data: (position) => companiesAsync.when(
           data: (companies) => _buildContent(
               position, companies, filters.radius, uiState,
-              profile: profileAsync.value),
-          loading: () => const Center(child: CupertinoActivityIndicator()),
+              profile: profileAsync.valueOrNull),
+          loading: _buildLoading,
           error: (error, stack) => _buildContent(
               position, [], filters.radius, uiState,
               errorMessage: 'Erro ao buscar empresas. Verifique sua conexão.',
-              profile: profileAsync.value),
+              profile: profileAsync.valueOrNull),
         ),
-        loading: () => const Center(child: CupertinoActivityIndicator()),
+        loading: _buildLoading,
         error: (error, stack) => companiesAsync.when(
           data: (companies) => _buildContent(
               null, companies, filters.radius, uiState,
-              profile: profileAsync.value),
-          loading: () => const Center(child: CupertinoActivityIndicator()),
+              profile: profileAsync.valueOrNull),
+          loading: _buildLoading,
           error: (error, stack) => _buildContent(
               null, [], filters.radius, uiState,
               errorMessage: 'Erro ao buscar empresas. Verifique sua conexão.',
-              profile: profileAsync.value),
+              profile: profileAsync.valueOrNull),
         ),
       ),
     );
@@ -299,7 +316,11 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final mappableCompanies =
         sorted.where((c) => c.latitude != null && c.longitude != null).toList();
 
-    if (_pendingAutoFit && mappableCompanies.isNotEmpty) {
+    _lastMappable = mappableCompanies;
+    _lastUserLatLng =
+        position != null ? LatLng(position.latitude, position.longitude) : null;
+
+    if (_pendingAutoFit && mappableCompanies.isNotEmpty && _mapControllerReady) {
       _pendingAutoFit = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fitToMarkers(
