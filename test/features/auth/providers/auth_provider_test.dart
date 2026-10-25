@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/core/services/api_client.dart';
 import 'package:rumo_app/features/auth/providers/auth_provider.dart';
+import 'package:rumo_app/features/auth/providers/profile_provider.dart';
 
 class MockFirebaseAuth extends Mock implements FirebaseAuth {}
 
@@ -10,15 +12,20 @@ class MockUserCredential extends Mock implements UserCredential {}
 
 class MockApiClient extends Mock implements ApiClient {}
 
+class MockRef extends Mock implements Ref {}
+
 void main() {
   late MockFirebaseAuth mockAuth;
   late MockApiClient mockApiClient;
+  late MockRef mockRef;
   late AuthController controller;
 
   setUp(() {
     mockAuth = MockFirebaseAuth();
     mockApiClient = MockApiClient();
-    controller = AuthController(mockApiClient, auth: mockAuth);
+    mockRef = MockRef();
+    when(() => mockRef.invalidate(profileProvider)).thenReturn(null);
+    controller = AuthController(mockApiClient, auth: mockAuth, ref: mockRef);
   });
 
   group('signIn', () {
@@ -80,6 +87,27 @@ void main() {
       expect(params['p_departamento'], 'Gestão');
     });
 
+    test(
+        'invalida profileProvider após ensure_profile — sem isso, uma leitura '
+        'de profileProvider que vencesse a corrida contra essa RPC ficaria '
+        'com null cacheado pelo resto da sessão', () async {
+      when(() => mockAuth.createUserWithEmailAndPassword(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          )).thenAnswer((_) async => MockUserCredential());
+      when(() => mockApiClient.rpc('ensure_profile', any()))
+          .thenAnswer((_) async => {});
+
+      await controller.signUp(
+        name: 'Fulano',
+        email: 'a@a.com',
+        password: '123456',
+        department: 'Gestão',
+      );
+
+      verify(() => mockRef.invalidate(profileProvider)).called(1);
+    });
+
     test('propaga a exceção quando a criação do usuário falha', () async {
       when(() => mockAuth.createUserWithEmailAndPassword(
             email: any(named: 'email'),
@@ -102,10 +130,22 @@ void main() {
   group('signOut', () {
     test('chama signOut do FirebaseAuth', () async {
       when(() => mockAuth.signOut()).thenAnswer((_) async {});
+      when(() => mockApiClient.clearCache()).thenReturn(null);
 
       await controller.signOut();
 
       verify(() => mockAuth.signOut()).called(1);
+    });
+
+    test('limpa o token cacheado do ApiClient — sem isso, trocar de conta '
+        'sem reiniciar o app reaproveitaria o token da conta anterior',
+        () async {
+      when(() => mockAuth.signOut()).thenAnswer((_) async {});
+      when(() => mockApiClient.clearCache()).thenReturn(null);
+
+      await controller.signOut();
+
+      verify(() => mockApiClient.clearCache()).called(1);
     });
   });
 }

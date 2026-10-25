@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
+import 'auth_provider.dart';
 
 class UserProfile {
   final String id;
@@ -36,7 +36,14 @@ class UserProfile {
 }
 
 final profileProvider = FutureProvider<UserProfile?>((ref) async {
-  final user = FirebaseAuth.instance.currentUser;
+  // Observa authStateProvider em vez de ler FirebaseAuth.instance.currentUser
+  // direto: currentUser é síncrono e pode ainda não estar populado no boot
+  // (a sessão persistida do Firebase restaura de forma assíncrona), o que
+  // fazia esse provider ficar permanentemente travado em "sem perfil" -
+  // confirmado na prática (profileProvider nunca refaz essa leitura sozinho,
+  // já que nada mais o invalida). Aguardar authStateProvider.future garante
+  // que o usuário já foi resolvido pelo próprio Firebase.
+  final user = await ref.watch(authStateProvider.future);
   if (user == null) return null;
 
   final apiClient = ref.watch(apiClientProvider);
