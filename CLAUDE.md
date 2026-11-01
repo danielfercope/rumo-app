@@ -204,6 +204,8 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `profiles` | Perfis de usuário (`id` = UID do Firebase; nome, departamento, nivel_acesso) |
 | `tracking_equipe` | Posição atual de cada usuário (upsert por `user_id`) |
 | `tracking_history` | Histórico de localizações (append-only) |
+| `crm_sync_state` | Marca d'água da sincronização CRM → banco (maior ID de empresa do CRM já processado) |
+| `crm_sync_pending` | Empresas do CRM que falharam no ETL e aguardam nova tentativa (com backoff) |
 
 ### RPCs (Stored Procedures)
 
@@ -233,6 +235,14 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 **Integrações externas** — nomeadas de forma agnóstica de fornecedor (`CompanyLookupService`, `CrmService`), pra trocar de provedor sem reescrever a estrutura:
 - `/company-lookup` (`backend/app/services/company_lookup_service.py`) — hoje consulta a [BrasilAPI](https://brasilapi.com.br/) (pública, gratuita, sem token). Devolve o mesmo shape de chaves que o provedor antigo produzia, pra não exigir mudança nenhuma em `RegistrationService.saveCompany`/`sendToWebhook`.
 - `/crm` (`backend/app/services/crm_service.py`) — hoje integra com o HubSpot (API v3/v4), localizando a Company pelo CNPJ via uma propriedade customizada cujo nome interno é configurável (`CRM_CNPJ_PROPERTY_NAME`, porque é criada manualmente na conta do CRM). 4 ações: `getNotesWithOwners`, `getContacts`, `addContact`, `addNote`.
+
+**Sincronização CRM → banco** (`backend/app/services/crm_sync_service.py`) — a fonte das empresas é o CRM: a cada `CRM_SYNC_INTERVAL_SECONDS` (600) um loop `asyncio` iniciado no `lifespan` do FastAPI traz pro banco as empresas novas do CRM (com CNPJ preenchido), já enriquecidas e geocodificadas. **Nunca lista o CRM nem varre `companies`**:
+- Checagem barata: 1 consulta à marca d'água (`crm_sync_state`) + 1 chamada ao Search do HubSpot filtrada por `hs_object_id > marca d'água` (ordenada, `limit` 100; IDs do HubSpot são crescentes) + 1 consulta à fila `crm_sync_pending` (tabela minúscula). Sem novidade, nada é escrito.
+- O Search demora a indexar empresas novas; por isso a consulta também inclui (OR) as criadas nos últimos `CRM_SYNC_OVERLAP_MINUTES` (30), e o lote devolvido (≤100) é deduplicado por CNPJ com um único SELECT indexado.
+- ETL por empresa nova: `CompanyLookupService` (BrasilAPI) → `GeocodingService` (Google Geocoding, chave de servidor `GEOCODING_API_KEY`) → `build_company_row`, o MESMO mapeamento de `RegistrationService.saveCompany` → INSERT com `ON CONFLICT DO NOTHING` (nunca sobrescreve o que o app cadastrou) + vínculo em `company_crm_sync`. Empresa que o app já cadastrou só ganha o vínculo.
+- Falhas (CNPJ não achado, sem coordenada, rede) vão pra `crm_sync_pending` com backoff e máximo de 5 tentativas; a marca d'água avança além delas.
+- Acesso ao banco via PostgREST (`PostgrestClient`) com token interno de papel `crm_sync` (privilégio mínimo, `db/schema/008_crm_sync.sql`) — o Backend não tem driver de Postgres.
+- **Desligada por padrão** (`CRM_SYNC_ENABLED=false`). Antes de ligar, rode o backfill único do histórico: `docker compose -f docker-compose.backend.yml exec backend python -m app.scripts.crm_backfill` (paginado por ID, idempotente). Sem backfill, a primeira execução do job só parte do maior ID atual do CRM, sem importar nada.
 
 Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
 

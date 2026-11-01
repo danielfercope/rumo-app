@@ -158,6 +158,69 @@ class CrmService:
         await self._associate_default("notes", note["id"], "companies", company_id)
         return {}
 
+    # ─── Sincronização (ver crm_sync_service.py) ────────────────────────
+
+    async def find_new_companies(
+        self, after_id: int, since_ms: int | None, limit: int
+    ) -> list[dict]:
+        """Empresas com CNPJ preenchido criadas depois da marca d'água, em
+        ordem crescente de ID, no máximo `limit` — uma única chamada, sem
+        paginar nem listar a base. IDs do HubSpot são crescentes, então não
+        dependem de relógio nem de fuso.
+
+        `since_ms` adiciona (OR) as empresas criadas desde esse instante,
+        mesmo com ID abaixo da marca d'água: cobre o atraso de indexação do
+        Search (uma empresa nova pode ficar pesquisável depois de outra com
+        ID maior). Quem consome deduplica o lote por CNPJ."""
+        has_cnpj = {
+            "propertyName": settings.crm_cnpj_property_name,
+            "operator": "HAS_PROPERTY",
+        }
+        filter_groups = [
+            {
+                "filters": [
+                    {
+                        "propertyName": "hs_object_id",
+                        "operator": "GT",
+                        "value": str(after_id),
+                    },
+                    has_cnpj,
+                ]
+            }
+        ]
+        if since_ms is not None:
+            filter_groups.append(
+                {
+                    "filters": [
+                        {
+                            "propertyName": "createdate",
+                            "operator": "GTE",
+                            "value": str(since_ms),
+                        },
+                        has_cnpj,
+                    ]
+                }
+            )
+        body = {
+            "filterGroups": filter_groups,
+            "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+            "properties": [settings.crm_cnpj_property_name, "name", "createdate"],
+            "limit": limit,
+        }
+        data = await self._post("/crm/v3/objects/companies/search", body)
+        return data.get("results") or []
+
+    async def latest_company_id(self) -> int:
+        """Maior ID de empresa hoje no CRM (0 se não houver nenhuma)."""
+        body = {
+            "sorts": [{"propertyName": "hs_object_id", "direction": "DESCENDING"}],
+            "properties": [],
+            "limit": 1,
+        }
+        data = await self._post("/crm/v3/objects/companies/search", body)
+        results = data.get("results") or []
+        return int(results[0]["id"]) if results else 0
+
     # ─── Helpers HTTP ───────────────────────────────────────────────────
 
     async def _find_company_id(self, cnpj: str) -> str | None:
