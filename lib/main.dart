@@ -11,6 +11,7 @@ import 'features/auth/login_page.dart';
 import 'features/auth/privacy_policy_page.dart';
 import 'features/leads/leads_page.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/groups/presentation/groups_home_page.dart';
 import 'features/map/radar_page.dart';
 
 Future<void> main() async {
@@ -68,7 +69,7 @@ class RumoApp extends ConsumerWidget {
   }
 }
 
-const _tabScreenNames = ['Radar', 'Leads', 'Perfil'];
+const _tabScreenNames = ['Radar', 'Leads', 'Perfil', 'Equipe'];
 
 class MainNavigation extends ConsumerWidget {
   const MainNavigation({super.key});
@@ -89,6 +90,8 @@ class MainNavigation extends ConsumerWidget {
               icon: Icon(CupertinoIcons.list_bullet), label: 'Leads'),
           BottomNavigationBarItem(
               icon: Icon(CupertinoIcons.person), label: 'Perfil'),
+          BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.person_2), label: 'Equipe'),
         ],
       ),
       tabBuilder: (context, index) {
@@ -133,6 +136,8 @@ class MainNavigation extends ConsumerWidget {
                     ),
                   ),
                 );
+              case 3:
+                return const GroupsHomePage();
               default:
                 return const CupertinoPageScaffold(child: SizedBox.shrink());
             }

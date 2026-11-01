@@ -16,6 +16,9 @@ import 'package:rumo_app/features/map/presentation/filter_modal.dart';
 import 'package:rumo_app/features/map/providers/company_provider.dart';
 import 'package:rumo_app/features/map/providers/filter_provider.dart';
 import 'package:rumo_app/features/map/providers/location_provider.dart';
+import 'package:rumo_app/features/groups/models/group_member_model.dart';
+import 'package:rumo_app/features/groups/models/group_model.dart';
+import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/map/radar_page.dart';
 import 'package:rumo_app/features/map/services/tracking_service.dart';
 
@@ -48,6 +51,20 @@ UserProfile _profile({String departamento = 'Pré-vendas'}) => UserProfile(
       departamento: departamento,
       nivelAcesso: 'user',
     );
+
+List<MyGroup> _myGroups({required bool trackingEnabled}) => [
+      MyGroup(
+        group: Group(
+          id: 'g1',
+          name: 'Grupo Teste',
+          trackingEnabled: trackingEnabled,
+          createdBy: 'u1',
+          createdAt: DateTime(2026),
+        ),
+        role: 'member',
+        joinedAt: DateTime(2026),
+      ),
+    ];
 
 void main() {
   late FakeGoogleMapsPlatform maps;
@@ -84,12 +101,14 @@ void main() {
     when(() => crm.getContacts(any())).thenAnswer((_) async => []);
     tracking = MockTrackingService();
     when(() => tracking.startForUser(any())).thenReturn(null);
+    when(() => tracking.stop()).thenReturn(null);
   });
 
   Future<ProviderContainer> pumpRadar(
     WidgetTester tester, {
     Future<Position> Function()? location,
     UserProfile? profile,
+    bool shouldTrack = false,
   }) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1;
@@ -99,6 +118,13 @@ void main() {
       locationProvider
           .overrideWith((ref) => location?.call() ?? Future.value(_pos())),
       profileProvider.overrideWith((ref) async => profile),
+      // myGroupsProvider (não shouldTrackProvider direto): precisa de uma
+      // transição real de loading -> data pra que o ref.listen de
+      // shouldTrackProvider em radar_page.dart dispare (listen não roda
+      // pro valor inicial, só pras mudanças subsequentes).
+      myGroupsProvider.overrideWith((ref) async => _myGroups(
+            trackingEnabled: shouldTrack,
+          )),
       crmServiceProvider.overrideWithValue(crm),
       trackingServiceProvider.overrideWithValue(tracking),
       apiClientProvider.overrideWithValue(ApiClient(baseUrl: 'http://x')),
@@ -372,14 +398,16 @@ void main() {
       await finish(tester);
     });
 
-    testWidgets('executivo inicia o rastreamento', (tester) async {
-      await pumpRadar(tester, profile: _profile(departamento: 'Executivo'));
+    testWidgets('grupo com rastreamento ligado inicia o tracking',
+        (tester) async {
+      await pumpRadar(tester, profile: _profile(), shouldTrack: true);
       await tester.pump();
       verify(() => tracking.startForUser(any())).called(1);
       await finish(tester);
     });
 
-    testWidgets('não executivo não inicia o rastreamento', (tester) async {
+    testWidgets('sem grupo com rastreamento ligado não inicia o tracking',
+        (tester) async {
       await pumpRadar(tester, profile: _profile());
       await tester.pump();
       verifyNever(() => tracking.startForUser(any()));

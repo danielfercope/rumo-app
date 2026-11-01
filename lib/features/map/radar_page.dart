@@ -9,6 +9,7 @@ import 'providers/location_provider.dart';
 import 'providers/company_provider.dart';
 import 'providers/filter_provider.dart';
 import '../auth/providers/profile_provider.dart';
+import '../groups/providers/group_provider.dart';
 import 'services/tracking_service.dart';
 import 'models/company_model.dart';
 import '../company/add_company_modal.dart';
@@ -258,12 +259,13 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final profileAsync = ref.watch(profileProvider);
     final uiState = ref.watch(radarViewModelProvider);
 
-    ref.listen<AsyncValue<UserProfile?>>(profileProvider, (_, next) {
-      next.whenData((profile) {
-        if (profile?.isExecutivo == true) {
-          ref.read(trackingServiceProvider).startForUser(profile!);
-        }
-      });
+    ref.listen<bool>(shouldTrackProvider, (_, shouldTrack) {
+      final profile = ref.read(profileProvider).value;
+      if (shouldTrack && profile != null) {
+        ref.read(trackingServiceProvider).startForUser(profile);
+      } else {
+        ref.read(trackingServiceProvider).stop();
+      }
     });
 
     ref.listen<MapFilters>(mapFiltersProvider, (_, __) {

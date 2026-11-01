@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/app_config.dart';
 import '../../../core/services/api_client.dart';
+import 'profile_provider.dart';
 
 /// StreamProvider sobre idTokenChanges (não authStateChanges) pra também
 /// capturar refresh de token e invalidar o cache do ApiClient junto.
@@ -15,15 +16,17 @@ final authStateProvider = StreamProvider<User?>((ref) {
 });
 
 final authControllerProvider = Provider((ref) {
-  return AuthController(ref.watch(apiClientProvider));
+  return AuthController(ref.watch(apiClientProvider), ref: ref);
 });
 
 class AuthController {
-  AuthController(this._apiClient, {FirebaseAuth? auth})
-      : _auth = auth ?? FirebaseAuth.instance;
+  AuthController(this._apiClient, {FirebaseAuth? auth, Ref? ref})
+      : _auth = auth ?? FirebaseAuth.instance,
+        _ref = ref;
 
   final ApiClient _apiClient;
   final FirebaseAuth _auth;
+  final Ref? _ref;
 
   Future<void> _ensureProfileExists(String? nome,
       {String? departamento}) async {
@@ -31,10 +34,24 @@ class AuthController {
       'p_nome': nome ?? 'Sem nome',
       'p_departamento': departamento,
     });
+    // profileProvider pode já ter rodado (e cacheado null) antes desta RPC
+    // commitar — ex.: RadarPage observa profileProvider desde o boot, e
+    // pode vencer a corrida contra este ensure_profile. Sem invalidar aqui,
+    // esse null ficaria cacheado pelo resto da sessão (nada mais invalida
+    // profileProvider sozinho).
+    _ref?.invalidate(profileProvider);
   }
 
   Future<void> signInWithGoogle() async {
     try {
+      // google_sign_in_web (0.12.x) não devolve idToken em signIn() — só
+      // accessToken —, então no Web o login passa direto pelo Firebase.
+      if (kIsWeb) {
+        await _auth.signInWithPopup(GoogleAuthProvider());
+        await _ensureProfileExists(_auth.currentUser?.displayName);
+        return;
+      }
+
       const webClientId = AppConfig.serverWebClientId;
       const iosClientId = AppConfig.clientId;
 
@@ -42,8 +59,10 @@ class AuthController {
         throw 'SERVER_WEB_CLIENT_ID não configurado';
       }
 
+      // No iOS, clientId é o Client ID nativo do app e serverClientId é o
+      // Web Client ID (necessário pro backend validar o idToken).
       final googleSignIn = GoogleSignIn(
-        clientId: kIsWeb || Platform.isIOS ? iosClientId : null,
+        clientId: Platform.isIOS ? iosClientId : null,
         serverClientId: webClientId,
       );
 
@@ -92,5 +111,6 @@ class AuthController {
 
   Future<void> signOut() async {
     await _auth.signOut();
+    _apiClient.clearCache();
   }
 }

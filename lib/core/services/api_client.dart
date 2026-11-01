@@ -59,6 +59,15 @@ class ApiClient {
   String? _cachedToken;
   int? _cachedTokenExpiresAt;
 
+  /// Limpa o token interno cacheado — chamado no logout. Sem isso, trocar de
+  /// conta sem reiniciar o app reaproveitaria o token exchangeado da conta
+  /// anterior até ele expirar, autenticando as chamadas seguintes com a
+  /// identidade errada.
+  void clearCache() {
+    _cachedToken = null;
+    _cachedTokenExpiresAt = null;
+  }
+
   Future<String> _accessToken() async {
     if (_accessTokenProvider != null) {
       return _accessTokenProvider();
