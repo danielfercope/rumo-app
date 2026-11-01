@@ -11,7 +11,7 @@
 | Mapa | Google Maps Flutter (com fallback pra OpenStreetMap via `flutter_map` quando não há chave/ela falha — ver [Fallback de mapa](#fallback-de-mapa)) |
 | CRM | HubSpot (via `CrmService` — nome agnóstico de fornecedor, ver [Backend self-hospedado](#backend-self-hospedado)) |
 | API externa | BrasilAPI (dados de CNPJ, via `CompanyLookupService`) |
-| Deploy | Docker + nginx (Flutter Web) + Docker Compose (backend self-hospedado)¹ |
+| Deploy | Docker + nginx (Flutter Web, local) + Docker Compose (backend self-hospedado)¹; em produção o Caddy da EC2 serve o Flutter Web e o APK (ver [Frontend em produção](#frontend-em-produção-flutter-web--apk)) |
 
 ¹ Backend self-hospedado roda local via Docker Compose, ou em produção numa instância EC2
 `t3.micro` provisionada via CloudFormation (`infra/aws/backend-stack.yaml`) — ver seção
@@ -269,7 +269,10 @@ Acessadas em código via `AppConfig` (`lib/core/app_config.dart`).
 
 ## Deploy (Docker)
 
-### App (Flutter Web)
+### App (Flutter Web) — Docker local
+
+> Este caminho (nginx) é só pra rodar localmente. Em produção o frontend é servido pelo
+> Caddy da EC2 — ver [Frontend em produção](#frontend-em-produção-flutter-web--apk).
 
 ```
 Dockerfile (multi-stage)
@@ -318,6 +321,60 @@ Secrets Manager e sobe a stack com `docker-compose.backend.yml` + `docker-compos
 (override que publica só 80/443 via Caddy — as portas internas de banco/PostgREST/backend
 não ficam expostas). TLS automático via Let's Encrypt, usando um subdomínio DuckDNS
 gratuito (`rumo-app.duckdns.org` por padrão — parâmetro `DomainName` do template).
+
+> **Região**: a stack `rumo-app-backend` roda em **us-east-1**, que pode não ser a região
+> padrão do seu AWS CLI. O `Makefile` já passa `--region $(AWS_REGION)` (padrão `us-east-1`);
+> em comandos `aws` manuais, passe `--region us-east-1`.
+>
+> **A EC2 acompanha a branch `dev`**: o `make deploy` faz `git pull` lá. Mudanças de
+> infra/compose só chegam à produção depois de mergeadas na `dev`.
+>
+> **Migrações**: `db/schema/*.sql` só são aplicadas automaticamente em banco **vazio**
+> (`docker-entrypoint-initdb.d`). Um arquivo novo (ex.: `008_crm_sync.sql`) precisa ser
+> aplicado à mão no banco de produção, via SSM, antes de ligar o recurso que depende dele.
+
+### Frontend em produção (Flutter Web + APK)
+
+O Caddy (`infra/Caddyfile.production`) serve, no **mesmo domínio** da API:
+
+| Caminho | Conteúdo |
+|---|---|
+| `/` | Flutter Web (SPA — rota desconhecida cai no `index.html`) |
+| `/download/rumo.apk` | APK Android assinado (link público) |
+| `/rest/*`, `/backend/*` | PostgREST e backend (como antes) |
+
+Como o site e a API têm a mesma origem, **não há CORS em produção** (CORS só aparece ao testar de
+`localhost` contra a AWS — use um Chrome com `--disable-web-security`).
+
+Os arquivos ficam no volume EBS (`/mnt/rumo-data/web` e `/mnt/rumo-data/downloads`, montados
+somente-leitura no Caddy por `docker-compose.prod.yml`) e chegam de um bucket S3 privado, criado
+pela stack **separada** `infra/aws/artifacts-stack.yaml` (não mexe na instância). O build é feito
+**localmente** — a `t3.micro` não aguenta compilar Flutter.
+
+```bash
+# Uma vez: bucket privado + política de leitura na role da EC2 (us-east-1)
+aws cloudformation deploy --region us-east-1 \
+  --template-file infra/aws/artifacts-stack.yaml \
+  --stack-name rumo-app-artifacts --capabilities CAPABILITY_NAMED_IAM
+
+# A cada publicação (build local -> S3 -> sync na EC2 via SSM)
+make deploy-web INSTANCE_ID=<instance-id> ARTIFACTS_BUCKET=<bucket>   # Flutter Web
+make deploy-apk INSTANCE_ID=<instance-id> ARTIFACTS_BUCKET=<bucket>   # APK em /download/rumo.apk
+```
+
+Pré-requisitos do build (todos fora do git): `.env`; `web/env.js` (chave do Maps no Web);
+`android/key.properties` + keystore (assinatura do APK); `android/secrets.properties`
+(`GOOGLE_MAPS_API_KEY`, ver `android/secrets.properties.example` — sem ele o mapa do APK fica
+em branco). O script é `infra/scripts/deploy_frontend.sh`.
+
+Ordem pra subir uma versão: **merge na `dev`** → `make deploy` (atualiza o Caddy/backend na EC2) →
+`make deploy-web` e/ou `make deploy-apk`.
+
+Configuração manual fora do código: Firebase > Authentication > *Authorized domains* precisa
+incluir `rumo-app.duckdns.org` (senão o login com Google no site falha); pro login com Google no
+APK, o SHA-1 do keystore precisa estar cadastrado no app Android do Firebase (e o
+`google-services.json` baixado de novo); a chave do Maps precisa aceitar o domínio (Web) e o
+pacote + SHA-1 (Android).
 
 ---
 
