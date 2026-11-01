@@ -12,7 +12,20 @@
           "package_name": "com.rumo.rumo_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "194526953767-lms7mresu0ukflno3uom6to7fcm510bf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rumo.rumo_app",
+            "certificate_hash": "744e12a01eeda0313d0ebde9e1a8098091fbde9f"
+          }
+        },
+        {
+          "client_id": "194526953767-mht23nvds2hc84j69fcdmb3h26kuckhp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBZ-IBTyRoxrY7TdUIc5gdmVpZcVYbMYCo"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "194526953767-mht23nvds2hc84j69fcdmb3h26kuckhp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "194526953767-2vr3ifv423pmdnicsfprpdt65h24okrv.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.rumo.dataRotaApp"
+              }
+            }
+          ]
         }
       }
     }
