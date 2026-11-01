@@ -1,7 +1,9 @@
-.PHONY: db-up db-down db-reset psql migrate token data deploy
+.PHONY: db-up db-down db-reset psql migrate token data deploy deploy-web deploy-apk
 
 COMPOSE = docker compose -f docker-compose.backend.yml --env-file infra/.env
 COUNT ?= 40
+# A stack rumo-app-backend roda em us-east-1 (o padrão do CLI pode ser outro).
+AWS_REGION ?= us-east-1
 
 db-up: ## Sobe db + postgrest + Backend em background (reconstrói imagens alteradas)
 	$(COMPOSE) up -d --build
@@ -33,7 +35,13 @@ data: ## Popula o banco local com empresas fictícias num raio de 10km de Jaragu
 	@python3 db/seed/seed_companies.py --count $(COUNT) | $(COMPOSE) exec -T db psql -U postgres -d rumo
 
 deploy: ## Redeploy manual em produção via SSM (requer AWS CLI configurado + INSTANCE_ID): make deploy INSTANCE_ID=i-xxxx
-	aws ssm send-command \
+	aws ssm send-command --region $(AWS_REGION) \
 		--instance-ids $(INSTANCE_ID) \
 		--document-name "AWS-RunShellScript" \
 		--parameters 'commands=["cd /opt/rumo-app && git pull && docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml --env-file infra/.env up -d --build"]'
+
+deploy-web: ## Build do Flutter Web + publica em produção: make deploy-web INSTANCE_ID=i-xxxx ARTIFACTS_BUCKET=bucket
+	AWS_REGION=$(AWS_REGION) infra/scripts/deploy_frontend.sh web
+
+deploy-apk: ## Build do APK assinado + publica em /download/rumo.apk: make deploy-apk INSTANCE_ID=i-xxxx ARTIFACTS_BUCKET=bucket
+	AWS_REGION=$(AWS_REGION) infra/scripts/deploy_frontend.sh apk

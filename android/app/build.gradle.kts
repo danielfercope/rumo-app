@@ -17,6 +17,13 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Chave do Google Maps (gitignored) — ver android/secrets.properties.example.
+val secretsProperties = Properties()
+val secretsPropertiesFile = rootProject.file("secrets.properties")
+if (secretsPropertiesFile.exists()) {
+    secretsProperties.load(FileInputStream(secretsPropertiesFile))
+}
+
 android {
     namespace = "com.rumo.rumo_app"
     compileSdk = flutter.compileSdkVersion
@@ -40,6 +47,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
+            secretsProperties.getProperty("GOOGLE_MAPS_API_KEY", "")
     }
 
     signingConfigs {

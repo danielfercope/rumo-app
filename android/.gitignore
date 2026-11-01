@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Chave do Google Maps (ver secrets.properties.example)
+secrets.properties
