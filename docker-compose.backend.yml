@@ -52,6 +52,9 @@ services:
       INTERNAL_JWT_SECRET: ${INTERNAL_JWT_SECRET}
       CRM_TOKEN: ${CRM_TOKEN:-}
       CRM_CNPJ_PROPERTY_NAME: ${CRM_CNPJ_PROPERTY_NAME:-cnpj}
+      CRM_SYNC_ENABLED: ${CRM_SYNC_ENABLED:-false}
+      CRM_SYNC_INTERVAL_SECONDS: ${CRM_SYNC_INTERVAL_SECONDS:-600}
+      GEOCODING_API_KEY: ${GEOCODING_API_KEY:-}
     volumes:
       - ./infra/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
     ports:

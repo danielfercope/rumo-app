@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -200,3 +202,60 @@ async def test_add_note_cria_e_associa(service):
 
     assert create_route.called
     assert associate_route.called
+
+
+# ─── Sincronização: busca de empresas novas ────────────────────────────
+
+@respx.mock
+async def test_find_new_companies_faz_uma_chamada_filtrada_por_id_e_janela(service):
+    route = respx.post(f"{BASE_URL}/crm/v3/objects/companies/search").mock(
+        return_value=httpx.Response(
+            200, json={"results": [{"id": "11", "properties": {"cnpj": CNPJ}}]}
+        )
+    )
+
+    rows = await service.find_new_companies(after_id=10, since_ms=1000, limit=100)
+
+    assert rows == [{"id": "11", "properties": {"cnpj": CNPJ}}]
+    assert route.call_count == 1
+    body = json.loads(route.calls.last.request.content)
+    by_id, by_date = body["filterGroups"]
+    assert {"propertyName": "hs_object_id", "operator": "GT", "value": "10"} in by_id["filters"]
+    assert {"propertyName": "createdate", "operator": "GTE", "value": "1000"} in by_date["filters"]
+    for group in body["filterGroups"]:
+        assert {"propertyName": "cnpj", "operator": "HAS_PROPERTY"} in group["filters"]
+    assert body["sorts"] == [{"propertyName": "hs_object_id", "direction": "ASCENDING"}]
+    assert body["limit"] == 100
+
+
+@respx.mock
+async def test_find_new_companies_sem_janela_so_filtra_por_id(service):
+    route = respx.post(f"{BASE_URL}/crm/v3/objects/companies/search").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+
+    assert await service.find_new_companies(after_id=0, since_ms=None, limit=5) == []
+
+    body = json.loads(route.calls.last.request.content)
+    assert len(body["filterGroups"]) == 1
+
+
+@respx.mock
+async def test_latest_company_id(service):
+    route = respx.post(f"{BASE_URL}/crm/v3/objects/companies/search").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "987"}]})
+    )
+
+    assert await service.latest_company_id() == 987
+    body = json.loads(route.calls.last.request.content)
+    assert body["sorts"] == [{"propertyName": "hs_object_id", "direction": "DESCENDING"}]
+    assert body["limit"] == 1
+
+
+@respx.mock
+async def test_latest_company_id_sem_empresas(service):
+    respx.post(f"{BASE_URL}/crm/v3/objects/companies/search").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+
+    assert await service.latest_company_id() == 0

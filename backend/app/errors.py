@@ -20,3 +20,7 @@ class CrmCompanyNotFoundError(Exception):
 
 class UpstreamIntegrationError(Exception):
     """Falha de rede ou de resposta ao chamar uma integração externa."""
+
+
+class GeocodingNotFoundError(Exception):
+    """O provedor de geocodificação não achou coordenadas pro endereço."""
