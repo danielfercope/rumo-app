@@ -44,6 +44,14 @@ class AuthController {
 
   Future<void> signInWithGoogle() async {
     try {
+      // google_sign_in_web (0.12.x) não devolve idToken em signIn() — só
+      // accessToken —, então no Web o login passa direto pelo Firebase.
+      if (kIsWeb) {
+        await _auth.signInWithPopup(GoogleAuthProvider());
+        await _ensureProfileExists(_auth.currentUser?.displayName);
+        return;
+      }
+
       const webClientId = AppConfig.serverWebClientId;
       const iosClientId = AppConfig.clientId;
 
@@ -51,8 +59,10 @@ class AuthController {
         throw 'SERVER_WEB_CLIENT_ID não configurado';
       }
 
+      // No iOS, clientId é o Client ID nativo do app e serverClientId é o
+      // Web Client ID (necessário pro backend validar o idToken).
       final googleSignIn = GoogleSignIn(
-        clientId: kIsWeb || Platform.isIOS ? iosClientId : null,
+        clientId: Platform.isIOS ? iosClientId : null,
         serverClientId: webClientId,
       );
 
