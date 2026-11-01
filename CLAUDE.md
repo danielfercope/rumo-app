@@ -8,7 +8,7 @@
 | State management | Riverpod 2 (Notifier + FutureProvider) |
 | Autenticação | Firebase Auth (+ Crashlytics e Analytics) |
 | Backend de dados | Self-hospedado: PostgreSQL + PostGIS exposto via PostgREST, com serviço Python (FastAPI, padrão MVC) auxiliar — atrás de um proxy Caddy |
-| Mapa | Google Maps Flutter |
+| Mapa | Google Maps Flutter (com fallback pra OpenStreetMap via `flutter_map` quando não há chave/ela falha — ver [Fallback de mapa](#fallback-de-mapa)) |
 | CRM | HubSpot (via `CrmService` — nome agnóstico de fornecedor, ver [Backend self-hospedado](#backend-self-hospedado)) |
 | API externa | BrasilAPI (dados de CNPJ, via `CompanyLookupService`) |
 | Deploy | Docker + nginx (Flutter Web) + Docker Compose (backend self-hospedado)¹ |
@@ -52,7 +52,10 @@ lib/
     │   ├── providers/
     │   │   ├── company_provider.dart  # companiesProvider (FutureProvider)
     │   │   ├── location_provider.dart # locationProvider (GPS com fallback)
-    │   │   └── filter_provider.dart   # MapFiltersNotifier + filterOptionsProvider
+    │   │   ├── filter_provider.dart   # MapFiltersNotifier + filterOptionsProvider
+    │   │   └── map_backend_provider.dart # useGoogleMapsProvider: Google Maps ou fallback OSM
+    │   ├── widgets/
+    │   │   └── osm_map.dart           # OsmMap (flutter_map) usado quando o Google Maps não está disponível
     │   ├── services/
     │   │   ├── company_service.dart   # Chamadas RPC via ApiClient (backend self-hospedado)
     │   │   └── tracking_service.dart  # Rastreamento de localização via ApiClient (timer 5 min)
@@ -172,6 +175,17 @@ GPS (geolocator)
                                             └─→ List<Company>
                                                     └─→ RadarPage (GoogleMap markers + bottom list)
 ```
+
+---
+
+## Fallback de mapa
+
+`useGoogleMapsProvider` (`lib/features/map/providers/map_backend_provider.dart`) decide entre Google Maps e OpenStreetMap (`OsmMap`, em `flutter_map`), em `RadarPage` e `TeamMapPage`:
+
+- **Android/iOS**: OSM quando `GOOGLE_API_KEY` está vazia. O plugin não avisa quando a chave é rejeitada, então só a ausência é detectada.
+- **Web**: OSM quando `web/env.js` não tem chave, quando o script do Google não carrega, ou quando o Google chama `gm_authFailure` (chave inválida, cota, domínio não autorizado) — `web/index.html` marca `window.__gmapsFailed` e dispara o evento `gmaps-auth-failure`.
+
+No OSM não existe camada híbrida (o botão de tipo de mapa some) e os marcadores usam os mesmos assets do Google Maps. Os tiles vêm de `tile.openstreetmap.org` (política de uso justo; pra tráfego alto, trocar por um servidor de tiles próprio/pago em `OsmMap`). Nos testes, `FixedMapBackend` (`test/helpers/fake_google_maps.dart`) fixa o backend.
 
 ---
 
