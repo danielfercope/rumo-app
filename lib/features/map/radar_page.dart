@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:ui' as ui;
@@ -8,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'providers/location_provider.dart';
 import 'providers/company_provider.dart';
 import 'providers/filter_provider.dart';
+import 'providers/map_backend_provider.dart';
 import '../auth/providers/profile_provider.dart';
 import '../groups/providers/group_provider.dart';
 import 'services/tracking_service.dart';
@@ -16,6 +19,7 @@ import '../company/add_company_modal.dart';
 import 'presentation/filter_modal.dart';
 import 'presentation/company_details_modal.dart';
 import 'presentation/radar_viewmodel.dart';
+import 'widgets/osm_map.dart';
 
 class RadarPage extends ConsumerStatefulWidget {
   const RadarPage({super.key});
@@ -26,7 +30,12 @@ class RadarPage extends ConsumerStatefulWidget {
 
 class _RadarPageState extends ConsumerState<RadarPage> {
   late GoogleMapController mapController;
+  final fm.MapController _osmController = fm.MapController();
   bool _mapControllerReady = false;
+
+  // Google Maps ou fallback OpenStreetMap (ver map_backend_provider.dart).
+  // Atualizado a cada build.
+  bool _useGoogle = true;
   MapType _currentMapType = MapType.normal;
 
   DateTime? _lastTapTime;
@@ -44,6 +53,12 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   BitmapDescriptor? _iconLibria;
   BitmapDescriptor? _iconSaveId;
   BitmapDescriptor? _iconOtherClient;
+
+  @override
+  void dispose() {
+    _osmController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -106,8 +121,26 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     }
   }
 
+  Widget _osmMarkerChild(Company company) {
+    final asset = company.isClient == true
+        ? switch (company.produto) {
+            'Libr.ia' => 'assets/libria.png',
+            'SaveID' => 'assets/save_id.png',
+            _ => 'assets/icon_save.webp',
+          }
+        : null;
+    if (asset != null) return Image.asset(asset, width: 35);
+    // Mesmo azul (hue 200) do pin padrão usado pro Google Maps.
+    return const Icon(CupertinoIcons.location_solid,
+        size: 35, color: Color(0xFF00AAFF));
+  }
+
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
+    _onMapReady();
+  }
+
+  void _onMapReady() {
     _mapControllerReady = true;
     // O mapa é desmontado durante o reload (filtros mudando); o reenquadre
     // pendente só pode rodar quando o novo controller existir.
@@ -128,6 +161,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     if (!_mapControllerReady) return;
     if (_lastCameraPosition == target) return;
     _lastCameraPosition = target;
+    if (!_useGoogle) {
+      _osmController.move(ll.LatLng(target.latitude, target.longitude), 14.0);
+      return;
+    }
     mapController.animateCamera(CameraUpdate.newCameraPosition(
       CameraPosition(target: target, zoom: 14.0),
     ));
@@ -159,6 +196,17 @@ class _RadarPageState extends ConsumerState<RadarPage> {
       if (userPos.longitude > maxLng) maxLng = userPos.longitude;
     }
 
+    if (!_useGoogle) {
+      _osmController.fitCamera(fm.CameraFit.bounds(
+        bounds: fm.LatLngBounds(
+          ll.LatLng(minLat - 0.01, minLng - 0.01),
+          ll.LatLng(maxLat + 0.01, maxLng + 0.01),
+        ),
+        padding: const EdgeInsets.all(60),
+      ));
+      return;
+    }
+
     mapController.animateCamera(
       CameraUpdate.newLatLngBounds(
         LatLngBounds(
@@ -185,7 +233,8 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   void _handleMarkerTap(Company company) {
-    if (kIsWeb) {
+    // Web e OSM não têm InfoWindow nativa: abre os detalhes direto.
+    if (kIsWeb || !_useGoogle) {
       _showCompanyDetails(company);
       return;
     }
@@ -213,6 +262,13 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
   Future<void> _centerOnUser() async {
     final positionAsync = await ref.read(locationProvider.future);
+    if (!_useGoogle) {
+      if (_mapControllerReady) {
+        _osmController.move(
+            ll.LatLng(positionAsync.latitude, positionAsync.longitude), 16.0);
+      }
+      return;
+    }
     mapController.animateCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
@@ -258,6 +314,14 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final filters = ref.watch(mapFiltersProvider);
     final profileAsync = ref.watch(profileProvider);
     final uiState = ref.watch(radarViewModelProvider);
+    _useGoogle = ref.watch(useGoogleMapsProvider);
+
+    // O Google pode reportar falha de chave já com o mapa na tela (Web): o
+    // controller antigo deixa de valer e o novo mapa precisa reenquadrar.
+    ref.listen<bool>(useGoogleMapsProvider, (_, __) {
+      _mapControllerReady = false;
+      _pendingAutoFit = true;
+    });
 
     ref.listen<bool>(shouldTrackProvider, (_, shouldTrack) {
       final profile = ref.read(profileProvider).value;
@@ -322,7 +386,9 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     _lastUserLatLng =
         position != null ? LatLng(position.latitude, position.longitude) : null;
 
-    if (_pendingAutoFit && mappableCompanies.isNotEmpty && _mapControllerReady) {
+    if (_pendingAutoFit &&
+        mappableCompanies.isNotEmpty &&
+        _mapControllerReady) {
       _pendingAutoFit = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fitToMarkers(
@@ -346,51 +412,85 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
     return Stack(
       children: [
-        GoogleMap(
-          onMapCreated: _onMapCreated,
-          initialCameraPosition:
-              CameraPosition(target: initialTarget, zoom: 14.0),
-          mapType: _currentMapType,
-          myLocationEnabled: !kIsWeb,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          markers: {
-            ...mappableCompanies.map((company) {
-              return Marker(
-                markerId: MarkerId(company.id),
-                position: LatLng(company.latitude!, company.longitude!),
-                consumeTapEvents: true,
-                infoWindow: InfoWindow(
-                  title: company.fantasyName ?? company.name ?? 'Empresa',
-                  snippet: company.segment ??
-                      'CNAE: ${company.cnaePrincipal ?? "N/A"}',
-                  onTap: () => _showCompanyDetails(company),
+        if (_useGoogle)
+          GoogleMap(
+            onMapCreated: _onMapCreated,
+            initialCameraPosition:
+                CameraPosition(target: initialTarget, zoom: 14.0),
+            mapType: _currentMapType,
+            myLocationEnabled: !kIsWeb,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            markers: {
+              ...mappableCompanies.map((company) {
+                return Marker(
+                  markerId: MarkerId(company.id),
+                  position: LatLng(company.latitude!, company.longitude!),
+                  consumeTapEvents: true,
+                  infoWindow: InfoWindow(
+                    title: company.fantasyName ?? company.name ?? 'Empresa',
+                    snippet: company.segment ??
+                        'CNAE: ${company.cnaePrincipal ?? "N/A"}',
+                    onTap: () => _showCompanyDetails(company),
+                  ),
+                  onTap: () => _handleMarkerTap(company),
+                  icon: _getMarkerIcon(company),
+                );
+              }),
+              if (kIsWeb && position != null)
+                Marker(
+                  markerId: const MarkerId('__my_location__'),
+                  position: LatLng(position.latitude, position.longitude),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueAzure),
+                  infoWindow: const InfoWindow(title: 'Você está aqui'),
+                  zIndex: 10,
                 ),
-                onTap: () => _handleMarkerTap(company),
-                icon: _getMarkerIcon(company),
-              );
-            }),
-            if (kIsWeb && position != null)
-              Marker(
-                markerId: const MarkerId('__my_location__'),
-                position: LatLng(position.latitude, position.longitude),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueAzure),
-                infoWindow: const InfoWindow(title: 'Você está aqui'),
-                zIndex: 10,
+            },
+            circles: {
+              Circle(
+                circleId: const CircleId('radius_circle'),
+                center: initialTarget,
+                radius: radius * 1000,
+                fillColor: CupertinoColors.activeBlue.withValues(alpha: 0.05),
+                strokeColor: CupertinoColors.activeBlue.withValues(alpha: 0.2),
+                strokeWidth: 1,
               ),
-          },
-          circles: {
-            Circle(
-              circleId: const CircleId('radius_circle'),
-              center: initialTarget,
-              radius: radius * 1000,
-              fillColor: CupertinoColors.activeBlue.withValues(alpha: 0.05),
-              strokeColor: CupertinoColors.activeBlue.withValues(alpha: 0.2),
-              strokeWidth: 1,
-            ),
-          },
-        ),
+            },
+          )
+        else
+          OsmMap(
+            controller: _osmController,
+            center: ll.LatLng(initialTarget.latitude, initialTarget.longitude),
+            zoom: 14.0,
+            radiusMeters: radius * 1000,
+            onMapReady: _onMapReady,
+            markers: [
+              for (final company in mappableCompanies)
+                OsmMarkerData(
+                  id: company.id,
+                  position: ll.LatLng(company.latitude!, company.longitude!),
+                  onTap: () => _handleMarkerTap(company),
+                  child: _osmMarkerChild(company),
+                ),
+              if (position != null)
+                OsmMarkerData(
+                  id: '__my_location__',
+                  position: ll.LatLng(position.latitude, position.longitude),
+                  title: 'Você está aqui',
+                  alignment: Alignment.center,
+                  size: 18,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.activeBlue,
+                      shape: BoxShape.circle,
+                      border:
+                          Border.all(color: CupertinoColors.white, width: 3),
+                    ),
+                  ),
+                ),
+            ],
+          ),
 
         // Controles: tipo de mapa, filtros, adicionar empresa, contador
         Positioned(
@@ -399,15 +499,18 @@ class _RadarPageState extends ConsumerState<RadarPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              CupertinoButton(
-                padding: const EdgeInsets.all(12),
-                color: CupertinoColors.white.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(30),
-                onPressed: _toggleMapType,
-                child: const Icon(CupertinoIcons.layers_alt,
-                    color: CupertinoColors.activeBlue),
-              ),
-              const SizedBox(height: 8),
+              // O OSM não tem camada híbrida (satélite).
+              if (_useGoogle) ...[
+                CupertinoButton(
+                  padding: const EdgeInsets.all(12),
+                  color: CupertinoColors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(30),
+                  onPressed: _toggleMapType,
+                  child: const Icon(CupertinoIcons.layers_alt,
+                      color: CupertinoColors.activeBlue),
+                ),
+                const SizedBox(height: 8),
+              ],
               CupertinoButton(
                 padding: const EdgeInsets.all(12),
                 color: CupertinoColors.white.withValues(alpha: 0.9),

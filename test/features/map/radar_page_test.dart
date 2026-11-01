@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -16,6 +17,7 @@ import 'package:rumo_app/features/map/presentation/filter_modal.dart';
 import 'package:rumo_app/features/map/providers/company_provider.dart';
 import 'package:rumo_app/features/map/providers/filter_provider.dart';
 import 'package:rumo_app/features/map/providers/location_provider.dart';
+import 'package:rumo_app/features/map/providers/map_backend_provider.dart';
 import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/models/group_model.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
@@ -109,11 +111,13 @@ void main() {
     Future<Position> Function()? location,
     UserProfile? profile,
     bool shouldTrack = false,
+    bool useGoogle = true,
   }) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final container = ProviderContainer(overrides: [
+      useGoogleMapsProvider.overrideWith(() => FixedMapBackend(useGoogle)),
       companyRepositoryProvider.overrideWithValue(repo),
       locationProvider
           .overrideWith((ref) => location?.call() ?? Future.value(_pos())),
@@ -351,6 +355,65 @@ void main() {
     await finish(tester);
   });
 
+  group('fallback OpenStreetMap', () {
+    testWidgets('sem Google Maps desenha o mapa OSM com marcadores e raio',
+        (tester) async {
+      await pumpRadar(tester, useGoogle: false);
+      await tester.pump();
+
+      expect(find.byType(GoogleMap), findsNothing);
+      expect(find.byType(FlutterMap), findsOneWidget);
+      // 4 empresas + a posição do usuário.
+      expect(
+          tester.widget<MarkerLayer>(find.byType(MarkerLayer)).markers.length,
+          5);
+      expect(
+          tester
+              .widget<CircleLayer>(find.byType(CircleLayer))
+              .circles
+              .single
+              .radius,
+          5000);
+      expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
+      expect(find.text('As 3 empresas mais próximas de você'), findsOneWidget);
+      // OSM não tem camada híbrida.
+      expect(find.byIcon(CupertinoIcons.layers_alt), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('tocar num marcador abre os detalhes da empresa',
+        (tester) async {
+      await pumpRadar(tester, useGoogle: false);
+      await tester.pump();
+
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('a')),
+          matching: find.byType(GestureDetector)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(CompanyDetailsModal), findsOneWidget);
+      await finish(tester);
+    });
+
+    testWidgets('troca pro OSM quando o Google reporta falha de chave',
+        (tester) async {
+      final container = await pumpRadar(tester);
+      await tester.pump();
+      expect(find.byType(GoogleMap), findsOneWidget);
+
+      (container.read(useGoogleMapsProvider.notifier) as FixedMapBackend)
+          .set(false);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(GoogleMap), findsNothing);
+      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await finish(tester);
+    });
+  });
+
   group('perfil', () {
     testWidgets('quem pode cadastrar vê o botão de adicionar empresa',
         (tester) async {
@@ -381,8 +444,7 @@ void main() {
       await finish(tester);
     });
 
-    testWidgets('cadastro concluído mostra o aviso de sucesso',
-        (tester) async {
+    testWidgets('cadastro concluído mostra o aviso de sucesso', (tester) async {
       await pumpRadar(tester, profile: _profile());
       await tester.pump();
       await tester.tap(find.byIcon(CupertinoIcons.plus));

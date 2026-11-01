@@ -2,6 +2,21 @@ import 'package:flutter/services.dart' show PlatformViewCreatedCallback;
 import 'package:flutter/widgets.dart';
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:rumo_app/features/map/providers/map_backend_provider.dart';
+
+/// Fixa Google Maps ou o fallback OpenStreetMap, sem depender de
+/// `GOOGLE_API_KEY` nem do `window` do Web. [set] simula a falha de chave
+/// reportada com o mapa já na tela.
+class FixedMapBackend extends UseGoogleMapsNotifier {
+  FixedMapBackend(this.useGoogle);
+
+  final bool useGoogle;
+
+  @override
+  bool build() => useGoogle;
+
+  void set(bool value) => state = value;
+}
 
 /// Plataforma de mapa falsa: troca a PlatformView nativa por um `SizedBox` e
 /// registra as chamadas de câmera, pra testar telas que usam [GoogleMap].
