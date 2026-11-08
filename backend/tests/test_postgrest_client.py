@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import jwt
 import pytest
@@ -68,3 +70,15 @@ async def test_reaproveita_o_token_entre_chamadas(db):
 
     tokens = {c.request.headers["Authorization"] for c in route.calls}
     assert len(tokens) == 1
+
+
+@respx.mock
+async def test_update_faz_patch_filtrado_sem_retornar_linhas(db):
+    route = respx.patch(f"{BASE}/crm_conexoes").mock(return_value=httpx.Response(204))
+
+    await db.update("crm_conexoes", {"id": "eq.abc"}, {"situacao": "ativa"})
+
+    request = route.calls.last.request
+    assert request.url.params["id"] == "eq.abc"
+    assert request.headers["Prefer"] == "return=minimal"
+    assert json.loads(request.content) == {"situacao": "ativa"}

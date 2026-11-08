@@ -14,10 +14,12 @@ from .config import settings
 from .schemas import CompanyLookupRequest, CrmRequest
 from .services.auth_service import AuthService
 from .services.company_lookup_service import CompanyLookupService
+from .services.carteira_sync_service import CarteiraSyncService
 from .services.crm_service import CrmService
 from .services.crm_sync_service import CrmSyncService
 from .services.geocoding_service import GeocodingService
 from .services.postgrest_client import PostgrestClient
+from .services.token_cipher import TokenCipher
 
 logger = logging.getLogger("uvicorn.error.crm_sync")
 
@@ -42,10 +44,31 @@ async def lifespan(app: FastAPI):
                 "CRM_SYNC_ENABLED=true, mas CRM_TOKEN e/ou GEOCODING_API_KEY "
                 "estão vazios — sincronização com o CRM não iniciada."
             )
+
+    carteira_task: asyncio.Task | None = None
+    if settings.crm_connections_sync_enabled:
+        if settings.crm_token_encryption_key and settings.geocoding_api_key:
+            carteira_sync_service = CarteiraSyncService(
+                postgrest_client,
+                company_lookup_service,
+                geocoding_service,
+                TokenCipher(),
+            )
+            carteira_task = asyncio.create_task(carteira_sync_service.run_forever())
+        else:
+            logger.error(
+                "CRM_CONNECTIONS_SYNC_ENABLED=true, mas CRM_TOKEN_ENCRYPTION_KEY "
+                "e/ou GEOCODING_API_KEY estão vazios — sincronização das "
+                "carteiras não iniciada."
+            )
     yield
-    if sync_task is not None:
-        sync_task.cancel()
-        await asyncio.gather(sync_task, return_exceptions=True)
+    for task in (sync_task, carteira_task):
+        if task is not None:
+            task.cancel()
+    await asyncio.gather(
+        *(t for t in (sync_task, carteira_task) if t is not None),
+        return_exceptions=True,
+    )
     await company_lookup_service.aclose()
     await crm_service.aclose()
     await geocoding_service.aclose()

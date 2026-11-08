@@ -14,6 +14,15 @@ class CnpjNotFoundError(Exception):
     """CNPJ não encontrado no provedor de consulta de dados cadastrais."""
 
 
+class InvalidCrmTokenError(Exception):
+    """O CRM recusou o token da organização (inválido, revogado ou sem as
+    permissões de leitura necessárias)."""
+
+
+class TokenCipherError(Exception):
+    """Token cifrado ilegível: chave de cifra ausente, trocada ou dado corrompido."""
+
+
 class CrmCompanyNotFoundError(Exception):
     """Nenhuma empresa no CRM corresponde ao CNPJ informado."""
 

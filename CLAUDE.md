@@ -208,7 +208,8 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `crm_sync_pending` | Empresas do CRM que falharam no ETL e aguardam nova tentativa (com backoff) |
 | `carteira_empresas` | Relação de uma organização (`groups`) com cada empresa: `status` cliente/lead/perdido (`009_carteira.sql`). `companies` segue global; empresa sem linha aqui é candidata a ser pontuada |
 | `crm_conexoes` | Conexão da organização com o CRM: token cifrado (nunca legível por `web_user`) + mapeamento de campos |
-| `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status |
+| `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status (o incremental só deixa log se houve novidade ou erro) |
+| `carteira_pendencias` | Fila de retentativas (com backoff) da sincronização por conexão — análoga à `crm_sync_pending`, mas com a conexão na chave (`011_carteira_pendencias.sql`) |
 
 ### RPCs (Stored Procedures)
 
@@ -246,6 +247,12 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 - Falhas (CNPJ não achado, sem coordenada, rede) vão pra `crm_sync_pending` com backoff e máximo de 5 tentativas; a marca d'água avança além delas.
 - Acesso ao banco via PostgREST (`PostgrestClient`) com token interno de papel `crm_sync` (privilégio mínimo, `db/schema/008_crm_sync.sql`) — o Backend não tem driver de Postgres.
 - **Desligada por padrão** (`CRM_SYNC_ENABLED=false`). Em produção, ligue com `infra/scripts/enable_crm_sync.sh` (`INSTANCE_ID=<id>`), nesta ordem: `migrate` (aplica a `008` — o schema só roda sozinho em banco vazio) → `config` (grava `GEOCODING_API_KEY` no Secrets Manager e atualiza o `infra/.env` da EC2) → `backfill` (importa o histórico do CRM uma vez; paginado por ID, idempotente) → `enable` (liga o job). `status` mostra logs, marca d'água, pendências e contagens. `DRY_RUN=1` só mostra o que seria feito. Sem backfill, a primeira execução do job só parte do maior ID atual do CRM, sem importar nada.
+
+**Sincronização por organização** (`backend/app/services/carteira_sync_service.py`) — substitui, por conexão, o sync de conta única acima (que continua no código, desligado). Cada organização conecta o próprio CRM com um token (`crm_conexoes`, cifrado com Fernet por `CRM_TOKEN_ENCRYPTION_KEY`); a cada `CRM_SYNC_INTERVAL_SECONDS` o job percorre as conexões `ativa`, em sequência:
+- Lê do CRM só o que **mudou** desde a marca d'água `crm_conexoes.ultima_modificacao_crm` (por data de modificação, com a mesma janela de sobreposição), então pega mudança de status e não só empresa nova. Marca d'água gravada por página, então uma carga que cai no meio retoma dali.
+- `CrmConnector` (`crm_connector.py`) é a interface por CRM (`validate`, `list_properties`, `fetch_changes`); `HubSpotConnector` é o primeiro. Só dados de **empresa** são lidos (nunca contatos/notas/negócios). `CrmMapping` (`crm_conexoes.mapeamento`) diz qual propriedade é o CNPJ e que valores do estágio significam cliente/perdido (o resto é lead).
+- `companies` é global: CNPJ já trazido por outra organização não é reconsultado na BrasilAPI/Google. O status vai pra `carteira_empresas`. Falhas por empresa vão pra `carteira_pendencias` (máx. 5 tentativas).
+- Sem novidade, escreve só `ultima_sincronizacao` na conexão. Ligar com `CRM_CONNECTIONS_SYNC_ENABLED=true` (exige `CRM_TOKEN_ENCRYPTION_KEY` e `GEOCODING_API_KEY`). **Perder/trocar a chave de cifra obriga todas as organizações a reconectar.** Em produção, a chave entra no Secrets Manager junto das demais variáveis de `infra/.env`.
 
 Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
 

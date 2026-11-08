@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     crm_sync_overlap_minutes: int = 30
     crm_sync_batch_size: int = 100
 
+    # Sincronização por conexão (carteira de cada organização — ver
+    # services/carteira_sync_service.py). Substitui o sync de conta única
+    # acima; desligada por padrão.
+    crm_connections_sync_enabled: bool = False
+    # Chave Fernet (urlsafe base64 de 32 bytes) que cifra o token de CRM de
+    # cada organização antes de gravar em crm_conexoes. Gerar com:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Perder a chave invalida todos os tokens gravados (as organizações
+    # precisam reconectar); trocá-la idem.
+    crm_token_encryption_key: str = ""
+
     # Chave de SERVIDOR da Google Geocoding API (distinta da chave do Maps no
     # app, que é restrita por referrer/app).
     geocoding_api_key: str = ""
