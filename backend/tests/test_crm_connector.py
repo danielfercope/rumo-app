@@ -158,7 +158,14 @@ async def test_fetch_changes_carga_inicial_sem_filtro_de_data(connector):
     assert body["sorts"] == [
         {"propertyName": "hs_lastmodifieddate", "direction": "ASCENDING"}
     ]
-    assert body["properties"] == ["cnpj", "lifecyclestage", "hs_lastmodifieddate"]
+    assert body["properties"] == [
+        "cnpj",
+        "lifecyclestage",
+        "hs_lastmodifieddate",
+        "createdate",
+        "hs_last_sales_activity_timestamp",
+        "num_contacted_notes",
+    ]
     record = pages[0][0]
     assert (record.external_id, record.cnpj, record.status_value) == (
         "1",
@@ -287,3 +294,41 @@ def test_build_connector_hubspot_e_desconhecido():
     assert isinstance(build_connector("hubspot", "t"), HubSpotConnector)
     with pytest.raises(ValueError):
         build_connector("pipedrive", "t")
+
+
+@respx.mock
+async def test_fetch_changes_traz_sinais_de_criacao_e_interacao(connector):
+    row = _row(1, "19.131.243/0001-97", "lead")
+    row["properties"].update(
+        {
+            "createdate": "2023-01-01T00:00:00Z",
+            "hs_last_sales_activity_timestamp": "1700000000000",
+            "num_contacted_notes": "7",
+        }
+    )
+    respx.post(SEARCH_URL).mock(
+        return_value=httpx.Response(200, json={"results": [row]})
+    )
+
+    (page,) = await _collect(connector)
+
+    record = page[0]
+    assert record.created_at_ms == 1672531200000
+    assert record.last_interaction_ms == 1700000000000
+    assert record.interactions == 7
+
+
+@respx.mock
+async def test_fetch_changes_sinais_ausentes_ou_invalidos_viram_none(connector):
+    row = _row(1, "19.131.243/0001-97", "lead")
+    row["properties"]["num_contacted_notes"] = "abc"
+    respx.post(SEARCH_URL).mock(
+        return_value=httpx.Response(200, json={"results": [row]})
+    )
+
+    (page,) = await _collect(connector)
+
+    record = page[0]
+    assert record.created_at_ms is None
+    assert record.last_interaction_ms is None
+    assert record.interactions is None

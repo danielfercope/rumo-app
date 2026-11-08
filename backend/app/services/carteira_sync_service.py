@@ -42,6 +42,32 @@ def _only_digits(value: str | None) -> str:
     return re.sub(r"\D", "", value or "")
 
 
+def _ms_iso(epoch_ms: int | None) -> str | None:
+    if not epoch_ms:
+        return None
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).isoformat()
+
+
+def _signals(source) -> tuple:
+    """Sinais de priorização de uma linha da carteira ou de um Item, em forma
+    comparável: o banco devolve o timestamp num formato e o conector gera em
+    outro, então compara-se o instante, não o texto."""
+    get = source.get if isinstance(source, dict) else lambda k: getattr(
+        source,
+        {"crm_criado_em": "criado_em", "ultima_interacao_em": "ultima_interacao_em",
+         "num_interacoes": "num_interacoes"}[k],
+    )
+
+    def instant(value):
+        return datetime.fromisoformat(value).timestamp() if value else None
+
+    return (
+        instant(get("crm_criado_em")),
+        instant(get("ultima_interacao_em")),
+        get("num_interacoes"),
+    )
+
+
 @dataclass
 class Item:
     """Uma empresa do CRM a gravar na carteira (já com CNPJ válido e status mapeado)."""
@@ -50,6 +76,10 @@ class Item:
     cnpj: str
     status: str
     attempts: int = 0  # tentativas anteriores (> 0 só vindo de carteira_pendencias)
+    # Sinais de priorização, em ISO 8601 (como o banco os devolve) ou None.
+    criado_em: str | None = None
+    ultima_interacao_em: str | None = None
+    num_interacoes: int | None = None
 
 
 @dataclass
@@ -227,7 +257,12 @@ class CarteiraSyncService:
                 result.ignoradas += 1
                 continue
             by_cnpj[cnpj] = Item(
-                record.external_id, cnpj, mapping.resolve_status(record.status_value)
+                record.external_id,
+                cnpj,
+                mapping.resolve_status(record.status_value),
+                criado_em=_ms_iso(record.created_at_ms),
+                ultima_interacao_em=_ms_iso(record.last_interaction_ms),
+                num_interacoes=record.interactions,
             )
         return list(by_cnpj.values())
 
@@ -281,6 +316,7 @@ class CarteiraSyncService:
             elif (
                 existing["status"] != item.status
                 or existing.get("crm_object_id") != item.external_id
+                or _signals(existing) != _signals(item)
             ):
                 result.atualizadas += 1
             else:
@@ -297,6 +333,9 @@ class CarteiraSyncService:
                     "origem": "crm",
                     "crm_object_id": item.external_id,
                     "status_atualizado_em": self._now_iso(),
+                    "crm_criado_em": item.criado_em,
+                    "ultima_interacao_em": item.ultima_interacao_em,
+                    "num_interacoes": item.num_interacoes,
                 }
             )
             if retrying:
@@ -343,7 +382,8 @@ class CarteiraSyncService:
             {
                 "group_id": f"eq.{group_id}",
                 "company_id": f"in.({','.join(company_ids)})",
-                "select": "company_id,status,crm_object_id",
+                "select": "company_id,status,crm_object_id,"
+                "crm_criado_em,ultima_interacao_em,num_interacoes",
             },
         )
         return {row["company_id"]: row for row in rows}
@@ -359,13 +399,22 @@ class CarteiraSyncService:
                 "attempts": f"lt.{MAX_ATTEMPTS}",
                 "order": "next_retry_at.asc",
                 "limit": str(PENDING_BATCH),
-                "select": "crm_object_id,cnpj,status,attempts",
+                "select": "crm_object_id,cnpj,status,attempts,"
+                "crm_criado_em,ultima_interacao_em,num_interacoes",
             },
         )
         if not rows:
             return
         items = [
-            Item(r["crm_object_id"], r["cnpj"], r["status"], r["attempts"])
+            Item(
+                r["crm_object_id"],
+                r["cnpj"],
+                r["status"],
+                r["attempts"],
+                criado_em=r.get("crm_criado_em"),
+                ultima_interacao_em=r.get("ultima_interacao_em"),
+                num_interacoes=r.get("num_interacoes"),
+            )
             for r in rows
         ]
         # As que dão certo saem da fila dentro de _ingest; as que falham de
@@ -402,6 +451,9 @@ class CarteiraSyncService:
                     "crm_object_id": item.external_id,
                     "cnpj": item.cnpj,
                     "status": item.status,
+                    "crm_criado_em": item.criado_em,
+                    "ultima_interacao_em": item.ultima_interacao_em,
+                    "num_interacoes": item.num_interacoes,
                     "attempts": attempts,
                     "last_error": str(exc)[:500],
                     "next_retry_at": self._iso(self._clock() + backoff * 60),

@@ -42,6 +42,11 @@ class CrmRecord:
     cnpj: str | None  # como veio do CRM (com ou sem máscara)
     status_value: str | None  # valor bruto do campo de status
     modified_at_ms: int
+    # Sinais de priorização (podem faltar no CRM): criação do registro, última
+    # atividade de vendas (epoch ms) e nº de vezes que a empresa foi contatada.
+    created_at_ms: int | None = None
+    last_interaction_ms: int | None = None
+    interactions: int | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,11 @@ class CrmConnector(Protocol):
     async def aclose(self) -> None: ...
 
 
+HUBSPOT_CREATED = "createdate"
+HUBSPOT_LAST_ACTIVITY = "hs_last_sales_activity_timestamp"
+HUBSPOT_CONTACT_COUNT = "num_contacted_notes"
+
+
 def _iso_to_ms(value: str | None) -> int:
     if not value:
         return 0
@@ -102,6 +112,13 @@ def _iso_to_ms(value: str | None) -> int:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return int(dt.timestamp() * 1000)
+
+
+def _to_int(value: str | None) -> int | None:
+    try:
+        return int(float(value)) if value not in (None, "") else None
+    except ValueError:
+        return None
 
 
 @dataclass
@@ -197,6 +214,9 @@ class HubSpotConnector:
                 mapping.campo_cnpj,
                 mapping.campo_status,
                 "hs_lastmodifieddate",
+                HUBSPOT_CREATED,
+                HUBSPOT_LAST_ACTIVITY,
+                HUBSPOT_CONTACT_COUNT,
             ],
             "limit": HUBSPOT_PAGE_SIZE,
         }
@@ -212,6 +232,9 @@ class HubSpotConnector:
             cnpj=props.get(mapping.campo_cnpj),
             status_value=props.get(mapping.campo_status),
             modified_at_ms=_iso_to_ms(props.get("hs_lastmodifieddate")),
+            created_at_ms=_iso_to_ms(props.get(HUBSPOT_CREATED)) or None,
+            last_interaction_ms=_iso_to_ms(props.get(HUBSPOT_LAST_ACTIVITY)) or None,
+            interactions=_to_int(props.get(HUBSPOT_CONTACT_COUNT)),
         )
 
     async def _request(self, method: str, path: str, **kwargs) -> dict:

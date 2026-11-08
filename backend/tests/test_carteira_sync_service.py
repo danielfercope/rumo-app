@@ -145,8 +145,8 @@ class FakeConnector:
         self.closed = True
 
 
-def rec(external_id, cnpj, stage="lead", modified=NOW_MS - 3_600_000):
-    return CrmRecord(str(external_id), cnpj, stage, modified)
+def rec(external_id, cnpj, stage="lead", modified=NOW_MS - 3_600_000, **signals):
+    return CrmRecord(str(external_id), cnpj, stage, modified, **signals)
 
 
 KEY = Fernet.generate_key().decode()
@@ -496,3 +496,81 @@ async def test_run_cycle_so_processa_conexoes_ativas(db, make_conexao, make_serv
 
     assert list(results) == [ativa["id"]]
     assert len(connector.since_calls) == 1
+
+
+# ─── Sinais de priorização (criação e interação no CRM) ─────────────────
+
+
+async def test_grava_sinais_de_interacao_na_carteira(db, make_conexao, make_service):
+    conexao = make_conexao()
+    connector = FakeConnector(
+        [
+            [
+                rec(
+                    1,
+                    CNPJ_1,
+                    created_at_ms=1672531200000,
+                    last_interaction_ms=1700000000000,
+                    interactions=4,
+                )
+            ]
+        ]
+    )
+
+    await make_service(connector).sync_connection(conexao)
+
+    row = db.tables["carteira_empresas"][0]
+    assert row["crm_criado_em"].startswith("2023-01-01T00:00:00")
+    assert row["ultima_interacao_em"].startswith("2023-11-14T22:13:20")
+    assert row["num_interacoes"] == 4
+
+
+async def test_mudanca_so_nos_sinais_atualiza_a_linha(db, make_conexao, make_service):
+    company = db.add_company(CNPJ_1)
+    conexao = make_conexao(situacao="ativa")
+    db.tables["carteira_empresas"].append(
+        {
+            "group_id": GROUP_A,
+            "company_id": company["id"],
+            "status": "lead",
+            "crm_object_id": "1",
+            "crm_criado_em": "2023-01-01T00:00:00+00:00",
+            "ultima_interacao_em": None,
+            "num_interacoes": 1,
+        }
+    )
+    # mesmo status e mesmo id; só a contagem de interações mudou, e o instante
+    # da criação vem no mesmo valor mas com outra grafia (Z vs +00:00)
+    connector = FakeConnector(
+        [[rec(1, CNPJ_1, created_at_ms=1672531200000, interactions=2)]]
+    )
+
+    result = await make_service(connector).sync_connection(conexao)
+
+    assert (result.atualizadas, result.sem_mudanca) == (1, 0)
+    assert db.tables["carteira_empresas"][0]["num_interacoes"] == 2
+
+
+async def test_sinais_iguais_em_outra_grafia_nao_regravam(
+    db, make_conexao, make_service
+):
+    company = db.add_company(CNPJ_1)
+    conexao = make_conexao(situacao="ativa")
+    db.tables["carteira_empresas"].append(
+        {
+            "group_id": GROUP_A,
+            "company_id": company["id"],
+            "status": "lead",
+            "crm_object_id": "1",
+            "crm_criado_em": "2023-01-01T00:00:00Z",
+            "ultima_interacao_em": None,
+            "num_interacoes": 3,
+        }
+    )
+    connector = FakeConnector(
+        [[rec(1, CNPJ_1, created_at_ms=1672531200000, interactions=3)]]
+    )
+
+    result = await make_service(connector).sync_connection(conexao)
+
+    assert (result.atualizadas, result.sem_mudanca) == (0, 1)
