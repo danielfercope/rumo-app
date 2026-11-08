@@ -15,6 +15,21 @@ final authStateProvider = StreamProvider<User?>((ref) {
   return FirebaseAuth.instance.idTokenChanges();
 });
 
+/// Foto da conta Google do usuário, ou `null` (e-mail/senha, ou conta sem foto:
+/// quem usa isso cai nas iniciais). O Firebase às vezes só preenche a foto nos
+/// dados do provedor, então olha `photoURL` e depois cada provedor vinculado.
+final userPhotoUrlProvider = Provider<String?>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null) return null;
+  final direct = user.photoURL;
+  if (direct != null && direct.isNotEmpty) return direct;
+  for (final info in user.providerData) {
+    final url = info.photoURL;
+    if (url != null && url.isNotEmpty) return url;
+  }
+  return null;
+});
+
 final authControllerProvider = Provider((ref) {
   return AuthController(ref.watch(apiClientProvider), ref: ref);
 });

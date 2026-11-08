@@ -20,7 +20,29 @@ class GroupsHomePage extends ConsumerWidget {
               ? const GroupOnboardingView()
               : const GroupManagementView(),
           loading: () => const Center(child: CupertinoActivityIndicator()),
-          error: (e, _) => Center(child: Text('Erro ao carregar grupos: $e')),
+          error: (e, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Não foi possível carregar os grupos',
+                      style: TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Text('$e',
+                      textAlign: TextAlign.center,
+                      style:
+                          const TextStyle(color: CupertinoColors.systemGrey)),
+                  const SizedBox(height: 12),
+                  CupertinoButton.filled(
+                    onPressed: () => ref.invalidate(myGroupsProvider),
+                    child: const Text('Tentar novamente'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

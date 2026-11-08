@@ -39,6 +39,7 @@ class OsmMap extends StatelessWidget {
     this.markers = const [],
     this.radiusMeters,
     this.onMapReady,
+    this.interactive = true,
   });
 
   final LatLng center;
@@ -50,6 +51,9 @@ class OsmMap extends StatelessWidget {
   final double? radiusMeters;
   final VoidCallback? onMapReady;
 
+  /// `false` trava arrastar/zoom (ex.: enquanto um modal está aberto por cima).
+  final bool interactive;
+
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
@@ -58,8 +62,10 @@ class OsmMap extends StatelessWidget {
         initialCenter: center,
         initialZoom: zoom,
         onMapReady: onMapReady,
-        interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+        interactionOptions: InteractionOptions(
+          flags: interactive
+              ? InteractiveFlag.all & ~InteractiveFlag.rotate
+              : InteractiveFlag.none,
         ),
       ),
       children: [
