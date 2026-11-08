@@ -2,11 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/core/services/api_client.dart';
 import 'package:rumo_app/features/carteira/models/crm_models.dart';
+import 'package:rumo_app/features/carteira/models/priority_models.dart';
 import 'package:rumo_app/features/carteira/services/carteira_service.dart';
 
 class MockApiClient extends Mock implements ApiClient {}
 
 void main() {
+  prioridadeTests();
+
   late MockApiClient api;
   late CarteiraService service;
 
@@ -185,6 +188,116 @@ void main() {
     test('erro e ativa', () {
       expect(conn('erro', erro: 'token').status, CrmConnectionStatus.erro);
       expect(conn('ativa').status, CrmConnectionStatus.conectado);
+    });
+  });
+}
+
+// ─── Prioridade ─────────────────────────────────────────────────────────
+void prioridadeTests() {
+  group('prioridade', () {
+    late MockApiClient api;
+    late CarteiraService service;
+
+    setUp(() {
+      api = MockApiClient();
+      service = CarteiraService(api);
+    });
+
+    test('consulta o endpoint com organização e limite e mapeia o resultado',
+        () async {
+      when(() => api.backendRequest('GET', 'carteira/prioridade',
+          body: any(named: 'body'), query: any(named: 'query'))).thenAnswer(
+        (_) async => {
+          'estrategia': 'perfil',
+          'n_clientes': 12,
+          'n_leads': 80,
+          'minimo_clientes_perfil': 10,
+          'itens': [
+            {
+              'posicao': 1,
+              'company_id': 'c1',
+              'cnpj': '19131243000197',
+              'nome': 'Farmácia Alfa',
+              'municipio': 'Joinville',
+              'uf': 'SC',
+              'nota': 93,
+              'motivos': ['Segmento: farmácia (90% dos seus clientes)'],
+            },
+          ],
+        },
+      );
+
+      final result = await service.prioridade('g1', limit: 20);
+
+      final query = verify(() => api.backendRequest(
+              'GET', 'carteira/prioridade',
+              body: any(named: 'body'), query: captureAny(named: 'query')))
+          .captured
+          .single as Map<String, String>;
+      expect(query, {'group_id': 'g1', 'limit': '20'});
+      expect(result.estrategia, PriorityStrategy.perfil);
+      expect(result.nLeads, 80);
+      expect(result.itens.single.nota, 93);
+      expect(result.itens.single.local, 'Joinville / SC');
+    });
+
+    test('sem cálculo ainda: estratégia nula e lista vazia', () async {
+      when(() => api.backendRequest('GET', 'carteira/prioridade',
+          body: any(named: 'body'), query: any(named: 'query'))).thenAnswer(
+        (_) async => {
+          'estrategia': null,
+          'n_clientes': 0,
+          'n_leads': 0,
+          'minimo_clientes_perfil': 10,
+          'itens': [],
+        },
+      );
+
+      final result = await service.prioridade('g1');
+
+      expect(result.estrategia, isNull);
+      expect(result.itens, isEmpty);
+    });
+
+    test('estratégia interação não traz nota; faltam clientes pro perfil', () {
+      final result = PriorityResult.fromJson({
+        'estrategia': 'interacao',
+        'n_clientes': 3,
+        'n_leads': 1,
+        'minimo_clientes_perfil': 10,
+        'itens': [
+          {
+            'posicao': 1,
+            'company_id': 'c1',
+            'nota': null,
+            'motivos': ['5 interações · no CRM há 152 dias'],
+          },
+        ],
+      });
+
+      expect(result.estrategia, PriorityStrategy.interacao);
+      expect(result.itens.single.nota, isNull);
+      expect(result.clientesFaltando, 7);
+    });
+
+    test('toCompany leva o essencial pro detalhe da empresa', () {
+      const item = PriorityItem(
+        posicao: 1,
+        companyId: 'c1',
+        cnpj: '19131243000197',
+        nome: 'Farmácia Alfa',
+        municipio: 'Joinville',
+        uf: 'SC',
+      );
+
+      final company = item.toCompany();
+
+      expect(company.id, 'c1');
+      expect(company.cnpj, '19131243000197');
+      expect(company.name, 'Farmácia Alfa');
+      expect(company.address, 'Joinville / SC');
+      expect(company.carteiraStatus, 'lead');
+      expect(company.isClient, false);
     });
   });
 }

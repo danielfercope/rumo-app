@@ -66,17 +66,20 @@ lib/
     │       ├── filter_modal.dart      # Modal de filtros avançados
     │       └── company_details_modal.dart # Detalhes da empresa + CRM
     │
-    ├── carteira/                      # Conexão da organização com o CRM (só admin do grupo)
+    ├── carteira/                      # Conexão da organização com o CRM (só admin do grupo) + prioridades dos leads
     │   ├── models/crm_models.dart     # CrmProperty/CrmMapping/CrmPreview/CrmConnection/SyncLog
+    │   ├── models/priority_models.dart # PriorityResult/PriorityItem/PriorityStrategy (GET /carteira/prioridade)
     │   ├── services/carteira_service.dart # validar/prévia/conectar/sincronizar/desconectar
     │   │                              # (Backend) + leitura de crm_conexoes/sincronizacoes (PostgREST)
     │   ├── providers/carteira_provider.dart # crmConnectionProvider (se reconsulta a cada 5 s
-    │   │                              # enquanto a carga inicial roda) + lastSyncProvider
+    │   │                              # enquanto a carga inicial roda) + lastSyncProvider +
+    │   │                              # priorityProvider (idem enquanto o cálculo não existe)
     │   └── presentation/
+    │       ├── priority_sliver.dart   # visão "Prioridades" da aba Leads: lista com nota e motivos sempre visíveis
     │       ├── crm_connection_section.dart # status + ações, dentro de GroupManagementView
     │       └── crm_connection_wizard.dart  # token → campos → prévia → conectar
     │
-    ├── leads/                         # Feature de busca textual de leads
+    ├── leads/                         # Busca textual de leads + visão "Prioridades" (segmento no topo)
     │   ├── leads_page.dart
     │   └── leads_search_provider.dart # leadsSearchQueryProvider + leadsResultsProvider
     │

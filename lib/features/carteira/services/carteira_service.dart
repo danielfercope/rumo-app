@@ -1,5 +1,6 @@
 import '../../../core/services/api_client.dart';
 import '../models/crm_models.dart';
+import '../models/priority_models.dart';
 
 /// Conexão da organização com o CRM dela. Validar, prévia, conectar,
 /// sincronizar e desconectar passam pelo Backend (que confere se quem chama é
@@ -42,6 +43,17 @@ class CarteiraService {
         'carteira/conexao',
         body: _credencial(groupId, token, mapping),
       );
+
+  /// Leads da organização em ordem de prioridade. O Backend só lê o resultado
+  /// já calculado (a cada sincronização); qualquer membro pode chamar.
+  Future<PriorityResult> prioridade(String groupId, {int limit = 50}) async {
+    final data = await _apiClient.backendRequest(
+      'GET',
+      'carteira/prioridade',
+      query: {'group_id': groupId, 'limit': '$limit'},
+    ) as Map<String, dynamic>;
+    return PriorityResult.fromJson(data);
+  }
 
   Future<void> sincronizarAgora(String groupId) => _apiClient.backendRequest(
         'POST',
