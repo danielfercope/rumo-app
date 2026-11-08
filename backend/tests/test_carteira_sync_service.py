@@ -196,7 +196,7 @@ def make_conexao(db, cipher):
 
 @pytest.fixture
 def make_service(db, lookup, cipher, clock):
-    def factory(connector, *, lookup_=None):
+    def factory(connector, *, lookup_=None, priority=None):
         async def no_sleep(_):
             pass
 
@@ -209,6 +209,7 @@ def make_service(db, lookup, cipher, clock):
             company_pause=0,
             clock=lambda: clock["now"],
             sleep=no_sleep,
+            priority=priority,
         )
 
     return factory
@@ -574,3 +575,72 @@ async def test_sinais_iguais_em_outra_grafia_nao_regravam(
     result = await make_service(connector).sync_connection(conexao)
 
     assert (result.atualizadas, result.sem_mudanca) == (0, 1)
+
+
+# ─── Recálculo da prioridade ao fim da sincronização ────────────────────
+
+
+class FakePriority:
+    def __init__(self, has_result=True, error=None):
+        self._has_result, self.error = has_result, error
+        self.recalculated: list[str] = []
+
+    async def has_result(self, group_id):
+        return self._has_result
+
+    async def recalculate(self, group_id):
+        self.recalculated.append(group_id)
+        if self.error:
+            raise self.error
+
+
+async def test_recalcula_a_prioridade_quando_a_carteira_mudou(
+    db, make_conexao, make_service
+):
+    priority = FakePriority()
+    conexao = make_conexao()
+    connector = FakeConnector([[rec(1, CNPJ_1)]])
+
+    await make_service(connector, priority=priority).sync_connection(conexao)
+
+    assert priority.recalculated == [GROUP_A]
+
+
+async def test_sem_mudanca_e_com_resultado_nao_recalcula(
+    db, make_conexao, make_service
+):
+    priority = FakePriority(has_result=True)
+    conexao = make_conexao(
+        situacao="ativa", ultima_modificacao_crm="2023-11-14T22:00:00+00:00"
+    )
+
+    await make_service(FakeConnector([]), priority=priority).sync_connection(conexao)
+
+    assert priority.recalculated == []
+
+
+async def test_sem_mudanca_mas_sem_resultado_calcula_uma_vez(
+    db, make_conexao, make_service
+):
+    priority = FakePriority(has_result=False)
+    conexao = make_conexao(
+        situacao="ativa", ultima_modificacao_crm="2023-11-14T22:00:00+00:00"
+    )
+
+    await make_service(FakeConnector([]), priority=priority).sync_connection(conexao)
+
+    assert priority.recalculated == [GROUP_A]
+
+
+async def test_falha_no_recalculo_nao_derruba_a_sincronizacao(
+    db, make_conexao, make_service
+):
+    priority = FakePriority(error=RuntimeError("banco caiu"))
+    conexao = make_conexao()
+    connector = FakeConnector([[rec(1, CNPJ_1)]])
+
+    result = await make_service(connector, priority=priority).sync_connection(conexao)
+
+    assert result.novas == 1
+    assert db.carteira(GROUP_A) == {CNPJ_1: "lead"}
+    assert _conexao_row(db, conexao)["situacao"] == "ativa"

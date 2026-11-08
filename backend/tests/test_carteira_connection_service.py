@@ -69,7 +69,7 @@ def members(db):
 
 @pytest.fixture
 def make(db, lookup, cipher, members):
-    def factory(connector):
+    def factory(connector, priority=None):
         async def no_sleep(_):
             pass
 
@@ -80,7 +80,7 @@ def make(db, lookup, cipher, members):
             db, lookup, FakeGeocoder(), cipher, build,
             company_pause=0, sleep=no_sleep,
         )
-        return CarteiraConnectionService(db, cipher, sync, build), sync
+        return CarteiraConnectionService(db, cipher, sync, build, priority=priority), sync
 
     return factory
 
@@ -304,3 +304,31 @@ async def test_desconectar_e_apagar_remove_so_o_que_veio_do_crm_da_organizacao(
     assert db.tables["crm_conexoes"] == []
     restantes = {(r["group_id"], r["origem"]) for r in db.tables["carteira_empresas"]}
     assert restantes == {(GROUP_A, "manual"), (GROUP_B, "crm")}
+
+
+class _Priority:
+    def __init__(self):
+        self.cleared: list[str] = []
+
+    async def clear(self, group_id):
+        self.cleared.append(group_id)
+
+
+async def test_apagar_a_carteira_apaga_tambem_a_prioridade_calculada(make, db):
+    priority = _Priority()
+    service, _ = make(FakeCrm(), priority)
+    await _with_carteiras(service, db)
+
+    await service.disconnect(UID_ADMIN, GROUP_A, apagar_carteira=True)
+
+    assert priority.cleared == [GROUP_A]
+
+
+async def test_desconectar_mantendo_a_carteira_mantem_a_prioridade(make, db):
+    priority = _Priority()
+    service, _ = make(FakeCrm(), priority)
+    await _with_carteiras(service, db)
+
+    await service.disconnect(UID_ADMIN, GROUP_A)
+
+    assert priority.cleared == []

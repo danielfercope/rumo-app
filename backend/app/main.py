@@ -13,6 +13,7 @@ from .errors import (
     InvalidCrmTokenError,
     InvalidMappingError,
     NotGroupAdminError,
+    NotGroupMemberError,
     SyncInProgressError,
     TokenCipherError,
     UnauthenticatedError,
@@ -34,6 +35,7 @@ from .services.crm_service import CrmService
 from .services.crm_sync_service import CrmSyncService
 from .services.geocoding_service import GeocodingService
 from .services.postgrest_client import PostgrestClient
+from .services.priority_service import PriorityService
 from .services.token_cipher import TokenCipher
 
 logger = logging.getLogger("uvicorn.error.crm_sync")
@@ -43,6 +45,7 @@ company_lookup_service = CompanyLookupService()
 crm_service = CrmService()
 geocoding_service = GeocodingService()
 postgrest_client = PostgrestClient()
+priority_service = PriorityService(postgrest_client)
 crm_sync_service = CrmSyncService(
     crm_service, company_lookup_service, geocoding_service, postgrest_client
 )
@@ -58,9 +61,15 @@ def _build_carteira_services() -> tuple[CarteiraSyncService, CarteiraConnectionS
         logger.warning("Conexão de CRM por organização indisponível: %s", exc)
         return None
     sync = CarteiraSyncService(
-        postgrest_client, company_lookup_service, geocoding_service, cipher
+        postgrest_client,
+        company_lookup_service,
+        geocoding_service,
+        cipher,
+        priority=priority_service,
     )
-    return sync, CarteiraConnectionService(postgrest_client, cipher, sync)
+    return sync, CarteiraConnectionService(
+        postgrest_client, cipher, sync, priority=priority_service
+    )
 
 
 _carteira = _build_carteira_services()
@@ -190,6 +199,17 @@ async def _carteira_call(coro):
         raise HTTPException(400, str(exc)) from exc
     except UpstreamIntegrationError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+
+@app.get("/carteira/prioridade")
+async def prioridade(
+    group_id: str, limit: int = 50, uid: str = Depends(current_uid)
+) -> dict:
+    """Leads da organização em ordem de prioridade (qualquer membro lê)."""
+    try:
+        return await priority_service.ranking(uid, group_id, limit)
+    except NotGroupMemberError as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @app.post("/carteira/conexao/validar")

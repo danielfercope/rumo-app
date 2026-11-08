@@ -147,12 +147,51 @@ class _Table:
         return len(set(self.clients) | set(self.base)) + 1
 
 
+MODEL_VERSION = 1
+
+
 @dataclass
 class PriorityModel:
     features: tuple[Feature, ...]
     tables: dict[str, _Table]
     n_clients: int
     alpha: float = DEFAULT_ALPHA
+
+    def to_json(self) -> dict:
+        """Forma gravável em jsonb. Guarda só as contagens: as funções de
+        extração e os pesos vêm do código (por chave da característica)."""
+        return {
+            "version": MODEL_VERSION,
+            "alpha": self.alpha,
+            "n_clients": self.n_clients,
+            "tables": {
+                key: {
+                    "n_clients": t.n_clients,
+                    "n_base": t.n_base,
+                    "clients": dict(t.clients),
+                    "base": dict(t.base),
+                }
+                for key, t in self.tables.items()
+            },
+        }
+
+    @classmethod
+    def from_json(
+        cls, data: Mapping, features: Sequence[Feature] = DEFAULT_FEATURES
+    ) -> "PriorityModel":
+        if data.get("version") != MODEL_VERSION:
+            raise ValueError("Versão de modelo desconhecida")
+        stored = data["tables"]
+        tables = {}
+        for feature in features:
+            t = stored.get(feature.key) or {}
+            tables[feature.key] = _Table(
+                clients=Counter(t.get("clients") or {}),
+                base=Counter(t.get("base") or {}),
+                n_clients=t.get("n_clients", 0),
+                n_base=t.get("n_base", 0),
+            )
+        return cls(tuple(features), tables, data["n_clients"], data["alpha"])
 
     @property
     def reliable(self) -> bool:
@@ -284,6 +323,7 @@ def evaluate(
     seed: int = 0,
     features: Sequence[Feature] = DEFAULT_FEATURES,
     alpha: float = DEFAULT_ALPHA,
+    fitter: "Callable[[Sequence[Company], Sequence[Company]], object] | None" = None,
 ) -> Evaluation:
     """Validação cruzada: esconde uma parte dos clientes, ajusta o modelo com o
     resto e vê onde os escondidos caem no ranking junto com os candidatos.
@@ -308,7 +348,13 @@ def evaluate(
 
     for i, held in enumerate(parts):
         train = [c for j, part in enumerate(parts) if j != i for c in part]
-        model = fit(train, universe, features, alpha)
+        # `fitter` troca o modelo avaliado (ex.: a logística) mantendo a mesma
+        # validação, pra os números serem comparáveis entre modelos.
+        model = (
+            fitter(train, universe)
+            if fitter is not None
+            else fit(train, universe, features, alpha)
+        )
         held_scores = [model.score(c).raw for c in held]
         cand_scores = [model.score(c).raw for c in candidates]
         auc_values.append(_auc(held_scores, cand_scores))

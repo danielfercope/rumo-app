@@ -27,6 +27,7 @@ from .crm_connector import (
 from .crm_sync_service import build_company_row, build_geocoding_address
 from .geocoding_service import GeocodingService
 from .postgrest_client import PostgrestClient
+from .priority_service import PriorityService
 from .token_cipher import TokenCipher
 
 # Filho de "uvicorn.error" pra aparecer nos logs do container sem ligar o INFO
@@ -115,6 +116,7 @@ class CarteiraSyncService:
         company_pause: float = 0.2,
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        priority: "PriorityService | None" = None,
     ) -> None:
         self._db = db
         self._lookup = lookup
@@ -125,6 +127,7 @@ class CarteiraSyncService:
         self._clock = clock
         self._sleep = sleep
         self._locks: dict[str, asyncio.Lock] = {}
+        self._priority = priority
 
     async def run_forever(self) -> None:
         interval = settings.crm_sync_interval_seconds
@@ -205,7 +208,24 @@ class CarteiraSyncService:
             result,
             f" — erro: {erro}" if erro else "",
         )
+        await self._refresh_priority(conexao["group_id"], result)
         return result
+
+    async def _refresh_priority(self, group_id: str, result: SyncResult) -> None:
+        """Recalcula a prioridade só quando a carteira mudou (ou ainda não há
+        resultado). Falha aqui não pode derrubar a sincronização: o dado da
+        carteira já está salvo e o próximo ciclo tenta de novo."""
+        if self._priority is None:
+            return
+        try:
+            if (
+                result.novas
+                or result.atualizadas
+                or not await self._priority.has_result(group_id)
+            ):
+                await self._priority.recalculate(group_id)
+        except Exception:
+            logger.exception("Falha ao recalcular a prioridade da carteira %s", group_id)
 
     # ─── Leitura do CRM ─────────────────────────────────────────────────
 

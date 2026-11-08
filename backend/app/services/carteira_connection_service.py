@@ -25,6 +25,7 @@ from .crm_connector import (
     build_connector,
 )
 from .postgrest_client import PostgrestClient
+from .priority_service import PriorityService
 from .token_cipher import TokenCipher
 
 logger = logging.getLogger("uvicorn.error.carteira_sync")
@@ -41,7 +42,9 @@ class CarteiraConnectionService:
         cipher: TokenCipher,
         sync: CarteiraSyncService,
         connector_factory: ConnectorFactory = build_connector,
+        priority: "PriorityService | None" = None,
     ) -> None:
+        self._priority = priority
         self._db = db
         self._cipher = cipher
         self._sync = sync
@@ -184,6 +187,10 @@ class CarteiraConnectionService:
                 "carteira_empresas",
                 {"group_id": f"eq.{group_id}", "origem": "eq.crm"},
             )
+            # A prioridade foi calculada sobre essa carteira: sem ela, o
+            # resultado guardado ficaria apontando pra empresas que saíram.
+            if self._priority is not None:
+                await self._priority.clear(group_id)
         await self._db.delete("crm_conexoes", {"id": f"eq.{conexao['id']}"})
 
     # ─── Auxiliares ─────────────────────────────────────────────────────

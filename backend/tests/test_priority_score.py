@@ -158,3 +158,28 @@ def test_avaliacao_exige_clientes_para_as_dobras():
     clients, others = population(n_clients=3)
     with pytest.raises(ValueError):
         evaluate(clients, others, folds=5)
+
+
+def test_modelo_serializa_e_volta_com_as_mesmas_notas():
+    import json
+
+    from app.services.priority_score import PriorityModel
+
+    clients, others = population()
+    model = fit(clients, clients + others)
+
+    restored = PriorityModel.from_json(json.loads(json.dumps(model.to_json())))
+
+    for c in (clients[0], others[0], others[1], {"cnpj": "x"}):
+        assert restored.score(c).raw == model.score(c).raw
+    assert restored.n_clients == model.n_clients and restored.reliable
+
+
+def test_modelo_de_versao_desconhecida_e_recusado():
+    from app.services.priority_score import PriorityModel
+
+    clients, others = population()
+    data = fit(clients, clients + others).to_json()
+    data["version"] = 99
+    with pytest.raises(ValueError):
+        PriorityModel.from_json(data)

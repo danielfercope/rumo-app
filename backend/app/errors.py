@@ -23,6 +23,10 @@ class NotGroupAdminError(Exception):
     """Quem fez a chamada não é administrador da organização."""
 
 
+class NotGroupMemberError(Exception):
+    """Quem fez a chamada não pertence à organização."""
+
+
 class InvalidMappingError(Exception):
     """O mapeamento de campos aponta pra uma propriedade que não existe no CRM."""
 
