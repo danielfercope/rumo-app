@@ -7,7 +7,8 @@ import 'package:http/http.dart' as http;
 import '../app_config.dart';
 
 /// Erro retornado pelo PostgREST/Backend, parseado do corpo
-/// `{code, message, details, hint}` (formato padrão do PostgREST).
+/// `{code, message, details, hint}` (formato padrão do PostgREST) ou
+/// `{detail}` (formato do FastAPI: texto, ou lista de `{loc, msg}` num 422).
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode = 0, this.code});
 
@@ -19,7 +20,9 @@ class ApiException implements Exception {
     try {
       final data = json.decode(response.body) as Map<String, dynamic>;
       return ApiException(
-        data['message'] as String? ?? 'Erro desconhecido',
+        data['message'] as String? ??
+            _fastApiDetail(data['detail']) ??
+            'Erro desconhecido',
         statusCode: response.statusCode,
         code: data['code'] as String?,
       );
@@ -29,6 +32,18 @@ class ApiException implements Exception {
         statusCode: response.statusCode,
       );
     }
+  }
+
+  static String? _fastApiDetail(dynamic detail) {
+    if (detail is String) return detail;
+    if (detail is List) {
+      final messages = detail
+          .map((e) => e is Map ? e['msg'] : null)
+          .whereType<String>()
+          .toList();
+      if (messages.isNotEmpty) return messages.join('; ');
+    }
+    return null;
   }
 
   @override
@@ -156,6 +171,24 @@ class ApiClient {
     final response = await _httpClient.post(uri,
         headers: await _authHeaders(), body: json.encode(body));
     return _decode(response);
+  }
+
+  /// Chamada ao Backend com qualquer método e query string (ex.:
+  /// `PUT carteira/conexao`, `DELETE carteira/conexao?group_id=...`).
+  /// Resposta sem corpo (204) devolve null.
+  Future<dynamic> backendRequest(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+  }) async {
+    final uri = Uri.parse('$baseUrl/backend/$path').replace(
+        queryParameters: query == null || query.isEmpty ? null : query);
+    final request = http.Request(method, uri)
+      ..headers.addAll(await _authHeaders());
+    if (body != null) request.body = json.encode(body);
+    final streamed = await _httpClient.send(request);
+    return _decode(await http.Response.fromStream(streamed));
   }
 }
 

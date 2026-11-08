@@ -36,7 +36,10 @@ class FakeService:
     async def validate(self, uid, group_id, provedor, token):
         return await self._do(
             "validate", uid, group_id, provedor, token,
-            result=[CrmProperty("cnpj", "CNPJ", "string")],
+            result=[
+                CrmProperty("cnpj", "CNPJ", "string"),
+                CrmProperty("estagio", "Estágio", "enumeration", (("lead", "Lead"),)),
+            ],
         )
 
     async def preview(self, uid, group_id, provedor, token, mapeamento):
@@ -112,7 +115,15 @@ def test_validar(client, service, auth):
 
     assert response.status_code == 200
     assert response.json() == {
-        "propriedades": [{"name": "cnpj", "label": "CNPJ", "type": "string"}]
+        "propriedades": [
+            {"name": "cnpj", "label": "CNPJ", "type": "string", "options": []},
+            {
+                "name": "estagio",
+                "label": "Estágio",
+                "type": "enumeration",
+                "options": [{"value": "lead", "label": "Lead"}],
+            },
+        ]
     }
     assert service.calls == [("validate", "uid-1", GROUP, "hubspot", "pat-segredo")]
 

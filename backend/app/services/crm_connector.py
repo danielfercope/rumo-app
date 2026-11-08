@@ -31,6 +31,9 @@ class CrmProperty:
     name: str
     label: str
     type: str
+    # Valores possíveis de uma propriedade de lista (ex.: estágio do ciclo de
+    # vida), como (valor, rótulo) — o app mostra isso pra mapear cliente/perdido.
+    options: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,11 @@ class HubSpotConnector:
                 name=p["name"],
                 label=p.get("label") or p["name"],
                 type=p.get("type") or "string",
+                options=tuple(
+                    (o["value"], o.get("label") or o["value"])
+                    for o in p.get("options") or []
+                    if not o.get("hidden")
+                ),
             )
             for p in data.get("results") or []
             if not p.get("archived")

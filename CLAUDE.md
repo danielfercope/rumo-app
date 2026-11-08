@@ -66,6 +66,16 @@ lib/
     │       ├── filter_modal.dart      # Modal de filtros avançados
     │       └── company_details_modal.dart # Detalhes da empresa + CRM
     │
+    ├── carteira/                      # Conexão da organização com o CRM (só admin do grupo)
+    │   ├── models/crm_models.dart     # CrmProperty/CrmMapping/CrmPreview/CrmConnection/SyncLog
+    │   ├── services/carteira_service.dart # validar/prévia/conectar/sincronizar/desconectar
+    │   │                              # (Backend) + leitura de crm_conexoes/sincronizacoes (PostgREST)
+    │   ├── providers/carteira_provider.dart # crmConnectionProvider (se reconsulta a cada 5 s
+    │   │                              # enquanto a carga inicial roda) + lastSyncProvider
+    │   └── presentation/
+    │       ├── crm_connection_section.dart # status + ações, dentro de GroupManagementView
+    │       └── crm_connection_wizard.dart  # token → campos → prévia → conectar
+    │
     ├── leads/                         # Feature de busca textual de leads
     │   ├── leads_page.dart
     │   └── leads_search_provider.dart # leadsSearchQueryProvider + leadsResultsProvider
@@ -264,7 +274,7 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 | `POST /carteira/conexao/sincronizar?group_id=` | "Sincronizar agora" (202; 409 se já houver uma em andamento) |
 | `DELETE /carteira/conexao?group_id=&apagar_carteira=` | Desconecta; com `apagar_carteira=true` remove também as linhas de origem `crm` |
 
-O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada. O status da conexão o app lê direto pelo PostgREST (`crm_conexoes`, sem a coluna do token, e `sincronizacoes`). Sem `CRM_TOKEN_ENCRYPTION_KEY` as rotas respondem 503. O handler de 422 omite o campo `input` do erro: ele traria o corpo inteiro, com o token.
+O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada. O status da conexão o app lê direto pelo PostgREST (`crm_conexoes`, sem a coluna do token, e `sincronizacoes`) — **sempre com `select` explícito em `crm_conexoes`**: o GRANT por coluna faz o PostgREST negar `select=*`. A tela é `lib/features/carteira/`; `ApiClient.backendRequest` faz PUT/DELETE/query nas rotas do Backend e `ApiException` lê tanto `message` (PostgREST) quanto `detail` (FastAPI). Sem `CRM_TOKEN_ENCRYPTION_KEY` as rotas respondem 503. O handler de 422 omite o campo `input` do erro: ele traria o corpo inteiro, com o token.
 
 Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
 

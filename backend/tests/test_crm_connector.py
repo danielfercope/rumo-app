@@ -114,7 +114,15 @@ async def test_list_properties_ignora_arquivadas(connector):
                 "results": [
                     {"name": "cnpj", "label": "CNPJ", "type": "string"},
                     {"name": "velha", "label": "Velha", "type": "string", "archived": True},
-                    {"name": "lifecyclestage", "type": "enumeration"},
+                    {
+                        "name": "lifecyclestage",
+                        "type": "enumeration",
+                        "options": [
+                            {"value": "lead", "label": "Lead"},
+                            {"value": "customer"},
+                            {"value": "antigo", "label": "Antigo", "hidden": True},
+                        ],
+                    },
                 ]
             },
         )
@@ -126,6 +134,9 @@ async def test_list_properties_ignora_arquivadas(connector):
         ("cnpj", "CNPJ"),
         ("lifecyclestage", "lifecyclestage"),
     ]
+    assert props[0].options == ()
+    # opção oculta fica de fora; sem rótulo, usa o valor
+    assert props[1].options == (("lead", "Lead"), ("customer", "customer"))
 
 
 # ─── fetch_changes ──────────────────────────────────────────────────────

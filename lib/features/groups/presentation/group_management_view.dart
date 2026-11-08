@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' show SelectableText;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../carteira/presentation/crm_connection_section.dart';
 import '../models/group_member_model.dart';
 import '../models/group_model.dart';
 import '../providers/group_provider.dart';
@@ -119,7 +120,9 @@ class GroupManagementView extends ConsumerWidget {
                         final destructive = role == 'member';
                         final ok = await _confirm(
                           context,
-                          title: destructive ? 'Remover admin' : 'Promover a admin',
+                          title: destructive
+                              ? 'Remover admin'
+                              : 'Promover a admin',
                           message: destructive
                               ? '${m.nome} deixará de ser administrador deste grupo.'
                               : '${m.nome} passará a administrar este grupo.',
@@ -183,6 +186,8 @@ class GroupManagementView extends ConsumerWidget {
               child: const Text('Ver mapa da equipe'),
             ),
           ],
+          const SizedBox(height: 24),
+          CrmConnectionSection(groupId: group.id),
         ],
       ],
     );

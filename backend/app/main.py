@@ -203,7 +203,13 @@ async def validar_conexao(
     )
     return {
         "propriedades": [
-            {"name": p.name, "label": p.label, "type": p.type} for p in props
+            {
+                "name": p.name,
+                "label": p.label,
+                "type": p.type,
+                "options": [{"value": v, "label": l} for v, l in p.options],
+            }
+            for p in props
         ]
     }
 
