@@ -32,6 +32,7 @@ class FakeDb:
         "sincronizacoes",
         "carteira_empresas",
         "carteira_pendencias",
+        "group_members",
     )
 
     def __init__(self):
@@ -105,7 +106,10 @@ class FakeDb:
             if existing:
                 existing.update(row)
             else:
-                self.tables[table].append(dict(row))
+                new = dict(row)
+                if table == "crm_conexoes":  # default gen_random_uuid() do banco
+                    new.setdefault("id", str(uuid.uuid4()))
+                self.tables[table].append(new)
 
     async def update(self, table, params, values):
         self.calls.append(("update", table))

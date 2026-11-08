@@ -254,6 +254,18 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 - `companies` é global: CNPJ já trazido por outra organização não é reconsultado na BrasilAPI/Google. O status vai pra `carteira_empresas`. Falhas por empresa vão pra `carteira_pendencias` (máx. 5 tentativas).
 - Sem novidade, escreve só `ultima_sincronizacao` na conexão. Ligar com `CRM_CONNECTIONS_SYNC_ENABLED=true` (exige `CRM_TOKEN_ENCRYPTION_KEY` e `GEOCODING_API_KEY`). **Perder/trocar a chave de cifra obriga todas as organizações a reconectar.** Em produção, a chave entra no Secrets Manager junto das demais variáveis de `infra/.env`.
 
+**Conectar o CRM** (`backend/app/services/carteira_connection_service.py`, rotas `/backend/carteira/*`) — identidade = o token interno que o app já usa (`Authorization: Bearer`), e só **admin da organização** (conferido em `group_members`, `012_crm_sync_group_members.sql`) conecta, sincroniza ou desconecta:
+
+| Rota | O que faz |
+|---|---|
+| `POST /carteira/conexao/validar` | Confere o token no CRM e lista as propriedades de empresa (pra o usuário mapear CNPJ e estágio). Sem estado |
+| `POST /carteira/conexao/previa` | Conta quantas empresas seriam importadas, por status (até 5.000; `truncado` se houver mais). Sem estado |
+| `PUT /carteira/conexao` | Grava a conexão (token cifrado) e dispara a carga inicial em segundo plano (202). Reconectar zera a marca d'água e relê tudo |
+| `POST /carteira/conexao/sincronizar?group_id=` | "Sincronizar agora" (202; 409 se já houver uma em andamento) |
+| `DELETE /carteira/conexao?group_id=&apagar_carteira=` | Desconecta; com `apagar_carteira=true` remove também as linhas de origem `crm` |
+
+O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada. O status da conexão o app lê direto pelo PostgREST (`crm_conexoes`, sem a coluna do token, e `sincronizacoes`). Sem `CRM_TOKEN_ENCRYPTION_KEY` as rotas respondem 503. O handler de 422 omite o campo `input` do erro: ele traria o corpo inteiro, com o token.
+
 Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
 
 Variáveis do backend ficam em `infra/.env` (copiar de `infra/.env.example`, gitignored) — distintas do `.env` do app Flutter. `CRM_CNPJ_PROPERTY_NAME` deve ser ajustada depois que a propriedade de CNPJ for criada no HubSpot.

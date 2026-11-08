@@ -51,3 +51,45 @@ def test_token_invalido_do_firebase(service, monkeypatch):
 
     with pytest.raises(UnauthenticatedError, match="inválido: expirado"):
         service.exchange_token("Bearer x")
+
+
+# ─── uid_from_internal_token (identidade nos endpoints /carteira) ───────
+
+
+def test_uid_do_token_interno_de_usuario(service):
+    from app.internal_token import mint_internal_token
+
+    token = mint_internal_token("uid-9")["token"]
+
+    assert service.uid_from_internal_token(f"Bearer {token}") == "uid-9"
+
+
+@pytest.mark.parametrize("header", [None, "", "Basic abc", "abc"])
+def test_uid_exige_header_bearer(service, header):
+    with pytest.raises(UnauthenticatedError, match="ausente ou mal formatado"):
+        service.uid_from_internal_token(header)
+
+
+def test_uid_recusa_assinatura_errada_e_expirado(service, monkeypatch):
+    forged = jwt.encode(
+        {"sub": "uid-1", "role": "web_user"}, "outro-segredo", algorithm="HS256"
+    )
+    with pytest.raises(UnauthenticatedError):
+        service.uid_from_internal_token(f"Bearer {forged}")
+
+    expired = jwt.encode(
+        {"sub": "uid-1", "role": "web_user", "exp": 1},
+        settings.internal_jwt_secret,
+        algorithm="HS256",
+    )
+    with pytest.raises(UnauthenticatedError):
+        service.uid_from_internal_token(f"Bearer {expired}")
+
+
+def test_uid_recusa_papel_que_nao_e_de_usuario(service):
+    from app.internal_token import mint_internal_token
+
+    job = mint_internal_token("crm-sync", role="crm_sync")["token"]
+
+    with pytest.raises(UnauthenticatedError, match="identidade"):
+        service.uid_from_internal_token(f"Bearer {job}")

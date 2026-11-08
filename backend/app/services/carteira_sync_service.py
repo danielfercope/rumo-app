@@ -17,6 +17,7 @@ from ..errors import (
 )
 from .company_lookup_service import CompanyLookupService
 from .crm_connector import (
+    ConnectorFactory,
     CrmConnector,
     CrmMapping,
     CrmRecord,
@@ -36,9 +37,6 @@ MAX_ATTEMPTS = 5
 PENDING_BATCH = 25
 BACKOFF_BASE_MINUTES = 10
 BACKOFF_MAX_MINUTES = 360
-
-ConnectorFactory = Callable[[str, str], CrmConnector]
-
 
 def _only_digits(value: str | None) -> str:
     return re.sub(r"\D", "", value or "")
@@ -120,6 +118,10 @@ class CarteiraSyncService:
             results[conexao["id"]] = await self.sync_connection(conexao)
         return results
 
+    def is_running(self, conexao_id: str) -> bool:
+        lock = self._locks.get(conexao_id)
+        return lock is not None and lock.locked()
+
     async def sync_connection(self, conexao: dict) -> SyncResult:
         """Sincroniza uma conexão. Sem marca d'água é a carga inicial; com ela,
         incremental. Ao concluir marca a conexão como 'ativa' — por isso serve
@@ -194,7 +196,7 @@ class CarteiraSyncService:
         saved_ms = _iso_to_ms(watermark) if watermark else 0
         async for records in connector.fetch_changes(since_ms, mapping):
             result.lidas += len(records)
-            items = self._items_from(records, mapping, result)
+            items = self.items_from(records, mapping, result)
             await self._ingest(conexao, items, result)
             # Marca d'água por página: se a carga cair no meio, retoma dali. Só
             # grava quando avança (a janela de sobreposição reconsulta o mesmo
@@ -210,7 +212,7 @@ class CarteiraSyncService:
         await self._retry_pending(conexao, result)
 
     @staticmethod
-    def _items_from(
+    def items_from(
         records: list[CrmRecord], mapping: CrmMapping, result: SyncResult
     ) -> list[Item]:
         by_cnpj: dict[str, Item] = {}

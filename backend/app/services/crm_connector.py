@@ -6,7 +6,7 @@ de dados, LGPD). A interface é pequena de propósito: um novo CRM (Pipedrive, R
 Station...) só precisa implementar `CrmConnector`; o restante (carteira, ETL de
 CNPJ, scoring) não muda."""
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol
@@ -225,6 +225,9 @@ class HubSpotConnector:
                 f"{response.text}"
             )
         return response.json() if response.content else {}
+
+
+ConnectorFactory = Callable[[str, str], CrmConnector]
 
 
 def build_connector(provedor: str, token: str) -> CrmConnector:
