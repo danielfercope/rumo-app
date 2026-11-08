@@ -214,7 +214,7 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 
 | Função | Parâmetros | Retorno |
 |---|---|---|
-| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit | `List<Company>` — unifica busca por raio, texto e filtros num único endpoint |
+| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit, group_id | `List<Company>` — unifica busca por raio, texto e filtros num único endpoint. Com `group_id` (organização ativa), `cliente` e `status_carteira` vêm da `carteira_empresas` daquela organização (exige ser membro); sem ele, usa o flag global `companies.is_client` |
 | `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` |
 | `ensure_profile` | nome, departamento | Cria/retorna o `profile` do usuário autenticado |
 

@@ -23,15 +23,17 @@ void main() {
           userLat: any(named: 'userLat'),
           userLong: any(named: 'userLong'),
           filters: any(named: 'filters'),
+          groupId: any(named: 'groupId'),
         )).thenAnswer((_) async => <Company>[]);
 
     await repository.getCompanies(
-        userLat: -26.4, userLong: -49.0, filters: filters);
+        userLat: -26.4, userLong: -49.0, filters: filters, groupId: 'g1');
 
     verify(() => mockService.getCompanies(
           userLat: -26.4,
           userLong: -49.0,
           filters: filters,
+          groupId: 'g1',
         )).called(1);
   });
 
@@ -42,6 +44,7 @@ void main() {
           isCnpj: any(named: 'isCnpj'),
           filters: any(named: 'filters'),
           limit: any(named: 'limit'),
+          groupId: any(named: 'groupId'),
         )).thenAnswer((_) async => <Company>[]);
 
     await repository.searchByText(query: 'teste', isCnpj: false, limit: 50);
@@ -51,6 +54,7 @@ void main() {
           isCnpj: false,
           filters: null,
           limit: 50,
+          groupId: null,
         )).called(1);
   });
 

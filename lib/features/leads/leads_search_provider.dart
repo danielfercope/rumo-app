@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../groups/providers/group_provider.dart';
 import '../map/models/company_model.dart';
 import '../map/providers/company_provider.dart';
 import '../map/providers/filter_provider.dart';
@@ -28,6 +29,7 @@ final leadsResultsProvider = FutureProvider<List<Company>?>((ref) async {
   final search = ref.watch(leadsSearchQueryProvider);
   final filters = ref.watch(mapFiltersProvider);
   final repo = ref.watch(companyRepositoryProvider);
+  final groupId = ref.watch(activeGroupProvider)?.group.id;
 
   final hasQuery = !search.isEmpty;
   final hasFilters = _hasNonRadiusFilter(filters);
@@ -38,5 +40,6 @@ final leadsResultsProvider = FutureProvider<List<Company>?>((ref) async {
     query: hasQuery ? search.normalized : '',
     isCnpj: search.isCnpj,
     filters: filters,
+    groupId: groupId,
   );
 });

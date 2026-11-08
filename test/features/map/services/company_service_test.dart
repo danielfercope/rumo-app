@@ -39,6 +39,22 @@ void main() {
       expect(params['p_radius_km'], 5.0);
     });
 
+    test('envia p_group_id só quando há organização ativa', () async {
+      when(() => mockApiClient.rpc('search_companies', any()))
+          .thenAnswer((_) async => []);
+
+      await service.getCompanies(
+          userLat: -26.4, userLong: -49.0, groupId: 'g1');
+      await service.getCompanies(userLat: -26.4, userLong: -49.0);
+
+      final calls =
+          verify(() => mockApiClient.rpc('search_companies', captureAny()))
+              .captured
+              .cast<Map>();
+      expect(calls[0]['p_group_id'], 'g1');
+      expect(calls[1].containsKey('p_group_id'), isFalse);
+    });
+
     test('inclui os filtros não vazios e omite os vazios/nulos', () async {
       when(() => mockApiClient.rpc('search_companies', any()))
           .thenAnswer((_) async => []);

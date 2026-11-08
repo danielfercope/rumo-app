@@ -54,15 +54,18 @@ class FakeCompanyRepository implements ICompanyRepository {
   String? lastQuery;
   bool? lastIsCnpj;
   double? lastLat;
+  String? lastGroupId;
 
   @override
   Future<List<Company>> getCompanies({
     required double userLat,
     required double userLong,
     MapFilters? filters,
+    String? groupId,
   }) async {
     if (error != null) throw error!;
     lastLat = userLat;
+    lastGroupId = groupId;
     lastFilters = filters;
     return companies;
   }
@@ -73,8 +76,10 @@ class FakeCompanyRepository implements ICompanyRepository {
     required bool isCnpj,
     MapFilters? filters,
     int limit = 200,
+    String? groupId,
   }) async {
     if (error != null) throw error!;
+    lastGroupId = groupId;
     lastQuery = query;
     lastIsCnpj = isCnpj;
     lastFilters = filters;

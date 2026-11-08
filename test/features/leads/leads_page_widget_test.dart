@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/leads/leads_page.dart';
 import 'package:rumo_app/features/map/models/company_model.dart';
 import 'package:rumo_app/features/map/presentation/filter_modal.dart';
@@ -15,6 +16,7 @@ void main() {
   Future<ProviderContainer> pumpPage(WidgetTester tester) async {
     final container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),
+      activeGroupProvider.overrideWithValue(null),
     ]);
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(

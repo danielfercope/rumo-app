@@ -16,7 +16,8 @@ class CompanyService {
 
   /// Filtros compartilhados por busca de raio e busca textual — ambas caem
   /// na mesma RPC search_companies, só variando os parâmetros de cada modo.
-  Map<String, dynamic> _buildFilterParams(MapFilters? filters) {
+  Map<String, dynamic> _buildFilterParams(
+      MapFilters? filters, String? groupId) {
     final isClient = _isClientFromType(filters);
     return {
       if (filters?.segment?.isNotEmpty == true) 'p_segment': filters!.segment,
@@ -25,6 +26,7 @@ class CompanyService {
       if (filters?.city?.isNotEmpty == true) 'p_city': filters!.city,
       if (filters?.cnae?.isNotEmpty == true) 'p_cnae': filters!.cnae,
       if (isClient != null) 'p_is_client': isClient,
+      if (groupId != null) 'p_group_id': groupId,
     };
   }
 
@@ -42,12 +44,13 @@ class CompanyService {
     required double userLat,
     required double userLong,
     MapFilters? filters,
+    String? groupId,
   }) {
     return _searchCompanies({
       'p_lat': userLat,
       'p_lon': userLong,
       'p_radius_km': filters?.radius ?? 5.0,
-      ..._buildFilterParams(filters),
+      ..._buildFilterParams(filters, groupId),
     });
   }
 
@@ -56,11 +59,12 @@ class CompanyService {
     required bool isCnpj,
     MapFilters? filters,
     int limit = 200,
+    String? groupId,
   }) {
     return _searchCompanies({
       'p_query': query,
       'p_limit': limit,
-      ..._buildFilterParams(filters),
+      ..._buildFilterParams(filters, groupId),
     });
   }
 
