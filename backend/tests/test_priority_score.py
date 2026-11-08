@@ -183,3 +183,29 @@ def test_modelo_de_versao_desconhecida_e_recusado():
     data["version"] = 99
     with pytest.raises(ValueError):
         PriorityModel.from_json(data)
+
+
+def test_cnae_como_descricao_vira_atividade_em_vez_de_sumir():
+    # a BrasilAPI grava a descrição, não o código, em companies.cnae_principal
+    desc = "Comércio atacadista de defensivos agrícolas, adubos e fertilizantes"
+    clients = [company(i, cnae=desc, segmento="agro") for i in range(MIN_CLIENTS)]
+    others = [
+        company(100 + i, cnae="Restaurantes e similares", segmento="outro")
+        for i in range(100)
+    ]
+    model = fit(clients, clients + others)
+
+    scored = model.score(company(1, cnae=desc, segmento="agro"))
+
+    classe = next(r for r in scored.reasons if r.feature == "cnae_classe")
+    assert classe.value == desc.lower() and classe.contribution > 0
+    # sem código não há divisão: some, não vira lixo
+    assert not any(r.feature == "cnae_divisao" for r in scored.reasons)
+
+
+def test_cnae_com_codigo_formatado_continua_funcionando():
+    clients, others = population()
+    model = fit(clients, clients + others)
+    scored = model.score(company(1, cnae="47.71-7/01"))
+    assert any(r.feature == "cnae_classe" and r.value == "47717" for r in scored.reasons)
+    assert any(r.feature == "cnae_divisao" and r.value == "47" for r in scored.reasons)

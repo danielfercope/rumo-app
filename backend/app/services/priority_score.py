@@ -51,14 +51,30 @@ def _text(key: str) -> Extractor:
     return extract
 
 
+_CODE_ONLY = re.compile(r"^[\d.\-/\s]+$")
+
+
+def _cnae_code(company: Company) -> str | None:
+    """Dígitos do CNAE quando o campo traz o CÓDIGO (47.71-7/01); None quando
+    traz a descrição. A BrasilAPI preenche `companies.cnae_principal` com a
+    descrição, então com dados reais o código quase nunca está disponível."""
+    raw = str(company.get("cnae_principal") or "").strip()
+    return _digits(raw) if raw and _CODE_ONLY.match(raw) else None
+
+
 def _cnae_divisao(company: Company) -> str | None:
-    digits = _digits(company.get("cnae_principal"))
-    return digits[:2] if len(digits) >= 2 else None
+    code = _cnae_code(company)
+    return code[:2] if code and len(code) >= 2 else None
 
 
 def _cnae_classe(company: Company) -> str | None:
-    digits = _digits(company.get("cnae_principal"))
-    return digits[:5] if len(digits) >= 5 else None
+    """Atividade no nível da subclasse: o código (5 dígitos) se houver, senão a
+    própria descrição, que identifica a atividade do mesmo jeito."""
+    code = _cnae_code(company)
+    if code:
+        return code[:5] if len(code) >= 5 else None
+    text = str(company.get("cnae_principal") or "").strip().lower()
+    return text or None
 
 
 def _municipio(company: Company) -> str | None:
