@@ -121,6 +121,15 @@ async def validation_error_handler(
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
+# Identidade de quem chama os endpoints do Backend: o token interno que o app
+# obtém em /auth/exchange e já manda em toda chamada.
+def current_uid(authorization: str = Header(...)) -> str:
+    try:
+        return auth_service.uid_from_internal_token(authorization)
+    except UnauthenticatedError as exc:
+        raise HTTPException(401, str(exc)) from exc
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -135,7 +144,9 @@ def exchange_token(authorization: str = Header(...)) -> dict:
 
 
 @app.post("/company-lookup")
-async def company_lookup(payload: CompanyLookupRequest) -> dict:
+async def company_lookup(
+    payload: CompanyLookupRequest, uid: str = Depends(current_uid)
+) -> dict:
     try:
         return await company_lookup_service.lookup_cnpj(payload.cnpj)
     except CnpjNotFoundError as exc:
@@ -145,7 +156,7 @@ async def company_lookup(payload: CompanyLookupRequest) -> dict:
 
 
 @app.post("/crm")
-async def crm(payload: CrmRequest) -> dict:
+async def crm(payload: CrmRequest, uid: str = Depends(current_uid)) -> dict:
     try:
         return await crm_service.handle(payload)
     except CrmCompanyNotFoundError as exc:
@@ -155,14 +166,7 @@ async def crm(payload: CrmRequest) -> dict:
 
 
 # ─── Conexão da organização com o CRM (carteira) ────────────────────────
-# Identidade = o token interno que o app já usa; só admin da organização.
-
-
-def current_uid(authorization: str = Header(...)) -> str:
-    try:
-        return auth_service.uid_from_internal_token(authorization)
-    except UnauthenticatedError as exc:
-        raise HTTPException(401, str(exc)) from exc
+# Identidade = o token interno que o app já usa (current_uid); só admin da organização.
 
 
 def _connection_service() -> CarteiraConnectionService:
