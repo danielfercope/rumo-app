@@ -20,6 +20,8 @@ import 'presentation/filter_modal.dart';
 import 'presentation/company_details_modal.dart';
 import 'presentation/radar_viewmodel.dart';
 import 'widgets/osm_map.dart';
+import 'widgets/user_avatar.dart';
+import '../auth/providers/auth_provider.dart';
 
 class RadarPage extends ConsumerStatefulWidget {
   const RadarPage({super.key});
@@ -36,6 +38,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   // Google Maps ou fallback OpenStreetMap (ver map_backend_provider.dart).
   // Atualizado a cada build.
   bool _useGoogle = true;
+
+  /// Verdadeiro enquanto um modal está aberto: o mapa fica estático. No Web o
+  /// mapa é uma platform view e continuaria recebendo o arrastar por baixo.
+  bool _modalOpen = false;
   MapType _currentMapType = MapType.normal;
 
   DateTime? _lastTapTime;
@@ -54,6 +60,11 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   BitmapDescriptor? _iconSaveId;
   BitmapDescriptor? _iconOtherClient;
 
+  // Marcador da própria localização: foto do usuário ou as iniciais do nome.
+  BitmapDescriptor? _iconMe;
+  String _myInitials = '?';
+  String? _myPhotoUrl;
+
   @override
   void dispose() {
     _osmController.dispose();
@@ -64,6 +75,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   void initState() {
     super.initState();
     _loadIcons();
+    ref.listenManual(profileProvider, (_, next) {
+      final profile = next.value;
+      if (profile != null) _loadMyAvatar(profile.nome);
+    }, fireImmediately: true);
     // Esconde a lista após 10 segundos automaticamente
     Future.delayed(const Duration(seconds: 10), () {
       if (mounted) {
@@ -80,6 +95,30 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     return (await fi.image.toByteData(format: ui.ImageByteFormat.png))!
         .buffer
         .asUint8List();
+  }
+
+  Future<void> _loadMyAvatar(String name) async {
+    final initials = userInitials(name);
+    String? photoUrl;
+    try {
+      photoUrl = ref.read(userPhotoUrlProvider);
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _myInitials = initials;
+        _myPhotoUrl = photoUrl;
+      });
+    }
+    try {
+      final png = await renderUserAvatarPng(
+          initials: initials, photo: await fetchUserPhoto(photoUrl));
+      if (mounted) {
+        setState(
+            () => _iconMe = BitmapDescriptor.bytes(png, width: 44, height: 44));
+      }
+    } catch (e) {
+      debugPrint('Erro ao gerar o avatar: $e');
+    }
   }
 
   Future<void> _loadIcons() async {
@@ -225,11 +264,22 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     });
   }
 
+  Future<T?> _showModal<T>(WidgetBuilder builder,
+      {bool barrierDismissible = true}) async {
+    setState(() => _modalOpen = true);
+    try {
+      return await showCupertinoModalPopup<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) setState(() => _modalOpen = false);
+    }
+  }
+
   void _showFilters() {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => const FilterModal(),
-    );
+    _showModal<void>((context) => const FilterModal());
   }
 
   void _handleMarkerTap(Company company) {
@@ -253,11 +303,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   void _showCompanyDetails(Company company) {
-    showCupertinoModalPopup(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => CompanyDetailsModal(company: company),
-    );
+    _showModal<void>((context) => CompanyDetailsModal(company: company));
   }
 
   Future<void> _centerOnUser() async {
@@ -280,10 +326,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   void _openAddCompany() async {
-    final result = await showCupertinoModalPopup<bool>(
-      context: context,
-      builder: (_) => const AddCompanyModal(),
-    );
+    final result = await _showModal<bool>((_) => const AddCompanyModal());
     if (result == true && mounted) {
       ref.invalidate(companiesProvider);
       _showSuccessToast();
@@ -418,7 +461,11 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             initialCameraPosition:
                 CameraPosition(target: initialTarget, zoom: 14.0),
             mapType: _currentMapType,
-            myLocationEnabled: !kIsWeb,
+            scrollGesturesEnabled: !_modalOpen,
+            zoomGesturesEnabled: !_modalOpen,
+            rotateGesturesEnabled: !_modalOpen,
+            tiltGesturesEnabled: !_modalOpen,
+            myLocationEnabled: false,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             markers: {
@@ -437,14 +484,16 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                   icon: _getMarkerIcon(company),
                 );
               }),
-              if (kIsWeb && position != null)
+              if (position != null)
                 Marker(
                   markerId: const MarkerId('__my_location__'),
                   position: LatLng(position.latitude, position.longitude),
-                  icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueAzure),
+                  anchor: const Offset(0.5, 0.5),
+                  icon: _iconMe ??
+                      BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueAzure),
                   infoWindow: const InfoWindow(title: 'Você está aqui'),
-                  zIndex: 10,
+                  zIndex: -1,
                 ),
             },
             circles: {
@@ -465,29 +514,27 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             zoom: 14.0,
             radiusMeters: radius * 1000,
             onMapReady: _onMapReady,
+            interactive: !_modalOpen,
             markers: [
-              for (final company in mappableCompanies)
-                OsmMarkerData(
-                  id: company.id,
-                  position: ll.LatLng(company.latitude!, company.longitude!),
-                  onTap: () => _handleMarkerTap(company),
-                  child: _osmMarkerChild(company),
-                ),
               if (position != null)
                 OsmMarkerData(
                   id: '__my_location__',
                   position: ll.LatLng(position.latitude, position.longitude),
                   title: 'Você está aqui',
                   alignment: Alignment.center,
-                  size: 18,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: CupertinoColors.activeBlue,
-                      shape: BoxShape.circle,
-                      border:
-                          Border.all(color: CupertinoColors.white, width: 3),
-                    ),
+                  size: 44,
+                  child: UserAvatar(
+                    initials: _myInitials,
+                    photoUrl: _myPhotoUrl,
+                    size: 44,
                   ),
+                ),
+              for (final company in mappableCompanies)
+                OsmMarkerData(
+                  id: company.id,
+                  position: ll.LatLng(company.latitude!, company.longitude!),
+                  onTap: () => _handleMarkerTap(company),
+                  child: _osmMarkerChild(company),
                 ),
             ],
           ),
