@@ -82,144 +82,282 @@ class GroupManagementView extends ConsumerWidget {
     final group = active.group;
     final membersAsync = ref.watch(groupMembersProvider(group.id));
 
+    Future<void> changeRole(GroupMember m, String role) async {
+      final destructive = role == 'member';
+      final ok = await _confirm(
+        context,
+        title: destructive ? 'Remover admin' : 'Promover a admin',
+        message: destructive
+            ? '${m.nome} deixará de ser administrador deste grupo.'
+            : '${m.nome} passará a administrar este grupo.',
+        destructive: destructive,
+      );
+      if (!ok || !context.mounted) return;
+      await _runOrShowError(context, () async {
+        await ref
+            .read(groupServiceProvider)
+            .setMemberRole(group.id, m.userId, role);
+        ref.invalidate(groupMembersProvider(group.id));
+      });
+    }
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       children: [
-        if (myGroups.length > 1) ...[
-          CupertinoSlidingSegmentedControl<String>(
-            groupValue: group.id,
-            children: {
-              for (final g in myGroups)
-                g.group.id: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(g.group.name, overflow: TextOverflow.ellipsis),
-                ),
-            },
-            onValueChanged: (id) {
-              if (id != null) {
-                ref.read(activeGroupIdProvider.notifier).state = id;
-              }
-            },
+        if (myGroups.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: CupertinoSlidingSegmentedControl<String>(
+              groupValue: group.id,
+              children: {
+                for (final g in myGroups)
+                  g.group.id: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(g.group.name, overflow: TextOverflow.ellipsis),
+                  ),
+              },
+              onValueChanged: (id) {
+                if (id != null) {
+                  ref.read(activeGroupIdProvider.notifier).state = id;
+                }
+              },
+            ),
           ),
-          const SizedBox(height: 20),
-        ] else
-          Text(group.name,
-              style:
-                  const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        const Text('Membros', style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        membersAsync.when(
-          data: (members) => Column(
-            children: members
-                .map((m) => _MemberRow(
-                      groupId: group.id,
-                      member: m,
-                      isAdmin: isAdmin,
-                      onChangeRole: (role) async {
-                        final destructive = role == 'member';
-                        final ok = await _confirm(
-                          context,
-                          title: destructive
-                              ? 'Remover admin'
-                              : 'Promover a admin',
-                          message: destructive
-                              ? '${m.nome} deixará de ser administrador deste grupo.'
-                              : '${m.nome} passará a administrar este grupo.',
-                          destructive: destructive,
-                        );
-                        if (!ok || !context.mounted) return;
-                        await _runOrShowError(context, () async {
-                          await ref
-                              .read(groupServiceProvider)
-                              .setMemberRole(group.id, m.userId, role);
-                          ref.invalidate(groupMembersProvider(group.id));
-                        });
-                      },
-                    ))
-                .toList(),
-          ),
-          loading: () => const Center(child: CupertinoActivityIndicator()),
-          error: (e, _) => Text('Erro ao carregar membros: $e'),
+        _GroupHeader(
+          name: group.name,
+          isAdmin: isAdmin,
+          memberCount: membersAsync.valueOrNull?.length,
         ),
-        if (isAdmin) ...[
-          const SizedBox(height: 24),
-          const Text('Convite', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: () => _showInvite(context, ref, group),
-            child: const Text('Mostrar convite'),
-          ),
-          const SizedBox(height: 24),
-          const Text('Rastreamento de localização',
-              style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(group.trackingEnabled
-                    ? 'Ativado para este grupo'
-                    : 'Desativado para este grupo'),
+        CupertinoListSection.insetGrouped(
+          header: const Text('Membros'),
+          children: membersAsync.when(
+            data: (members) => [
+              for (final m in members)
+                _MemberRow(
+                  member: m,
+                  isAdmin: isAdmin,
+                  onTap: () => _pickRoleAction(context, m, changeRole),
+                ),
+            ],
+            loading: () => const [
+              CupertinoListTile.notched(
+                title: Center(child: CupertinoActivityIndicator()),
               ),
-              CupertinoSwitch(
-                value: group.trackingEnabled,
-                onChanged: (enabled) => _runOrShowError(context, () async {
-                  await ref
-                      .read(groupServiceProvider)
-                      .setTracking(group.id, enabled);
-                  ref.invalidate(myGroupsProvider);
-                }),
+            ],
+            error: (e, _) => [
+              CupertinoListTile.notched(
+                title: Text('Erro ao carregar membros: $e',
+                    style:
+                        const TextStyle(color: CupertinoColors.destructiveRed)),
               ),
             ],
           ),
-          if (group.trackingEnabled) ...[
-            const SizedBox(height: 8),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: () => Navigator.push(
-                context,
-                CupertinoPageRoute(
-                  builder: (_) => TeamMapPage(groupId: group.id),
+        ),
+        if (isAdmin) ...[
+          CupertinoListSection.insetGrouped(
+            header: const Text('Convite'),
+            footer: const Text(
+                'Quem tiver o código entra no grupo. Regenere se ele vazar.'),
+            children: [
+              CupertinoListTile.notched(
+                leading: const _IconBadge(CupertinoIcons.person_badge_plus,
+                    CupertinoColors.systemBlue),
+                title: const Text('Convite do grupo'),
+                subtitle: const Text('Ver, copiar ou regenerar o código'),
+                trailing: const CupertinoListTileChevron(),
+                onTap: () => _showInvite(context, ref, group),
+              ),
+            ],
+          ),
+          CupertinoListSection.insetGrouped(
+            header: const Text('Rastreamento de localização'),
+            footer: const Text(
+                'Quando ativado, a posição dos membros aparece no mapa da equipe.'),
+            children: [
+              CupertinoListTile.notched(
+                leading: const _IconBadge(
+                    CupertinoIcons.location_fill, CupertinoColors.systemGreen),
+                title: const Text('Rastreamento'),
+                subtitle: Text(group.trackingEnabled
+                    ? 'Ativado para este grupo'
+                    : 'Desativado para este grupo'),
+                trailing: CupertinoSwitch(
+                  value: group.trackingEnabled,
+                  onChanged: (enabled) => _runOrShowError(context, () async {
+                    await ref
+                        .read(groupServiceProvider)
+                        .setTracking(group.id, enabled);
+                    ref.invalidate(myGroupsProvider);
+                  }),
                 ),
               ),
-              child: const Text('Ver mapa da equipe'),
-            ),
-          ],
-          const SizedBox(height: 24),
+              if (group.trackingEnabled)
+                CupertinoListTile.notched(
+                  leading: const _IconBadge(
+                      CupertinoIcons.map_fill, CupertinoColors.systemOrange),
+                  title: const Text('Ver mapa da equipe'),
+                  trailing: const CupertinoListTileChevron(),
+                  onTap: () => Navigator.push(
+                    context,
+                    CupertinoPageRoute(
+                      builder: (_) => TeamMapPage(groupId: group.id),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           CrmConnectionSection(groupId: group.id),
         ],
       ],
     );
   }
+
+  Future<void> _pickRoleAction(
+    BuildContext context,
+    GroupMember m,
+    Future<void> Function(GroupMember, String) changeRole,
+  ) async {
+    final role = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(m.nome),
+        message: Text(m.email),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: m.isAdmin,
+            onPressed: () => Navigator.pop(ctx, m.isAdmin ? 'member' : 'admin'),
+            child: Text(m.isAdmin ? 'Remover admin' : 'Promover a admin'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancelar'),
+        ),
+      ),
+    );
+    if (role != null) await changeRole(m, role);
+  }
+}
+
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({
+    required this.name,
+    required this.isAdmin,
+    required this.memberCount,
+  });
+
+  final String name;
+  final bool isAdmin;
+  final int? memberCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = [
+      if (memberCount != null)
+        memberCount == 1 ? '1 membro' : '$memberCount membros',
+      if (isAdmin) 'Você administra',
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemBlue,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            alignment: Alignment.center,
+            child: Text(_initial(name),
+                style: const TextStyle(
+                    color: CupertinoColors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w700)),
+                if (parts.isNotEmpty)
+                  Text(parts.join(' · '),
+                      style: const TextStyle(
+                          fontSize: 14, color: CupertinoColors.systemGrey)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _initial(String name) {
+  final t = name.trim();
+  return t.isEmpty ? '?' : t.characters.first.toUpperCase();
+}
+
+class _IconBadge extends StatelessWidget {
+  const _IconBadge(this.icon, this.color);
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18, color: CupertinoColors.white),
+      );
 }
 
 class _MemberRow extends StatelessWidget {
   const _MemberRow({
-    required this.groupId,
     required this.member,
     required this.isAdmin,
-    required this.onChangeRole,
+    required this.onTap,
   });
 
-  final String groupId;
   final GroupMember member;
   final bool isAdmin;
-  final void Function(String role) onChangeRole;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoListTile(
-      title: Text(member.nome),
+    final role = Text(
+      member.isAdmin ? 'Admin' : 'Membro',
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: member.isAdmin ? FontWeight.w600 : FontWeight.w400,
+        color: member.isAdmin
+            ? CupertinoColors.activeBlue
+            : CupertinoColors.systemGrey,
+      ),
+    );
+    return CupertinoListTile.notched(
+      leading: Container(
+        decoration: BoxDecoration(
+          color: CupertinoColors.systemGrey4.resolveFrom(context),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Text(_initial(member.nome),
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+      ),
+      title: Text(member.nome.isEmpty ? member.email : member.nome),
       subtitle: Text(member.email),
-      trailing: isAdmin
-          ? CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: () =>
-                  onChangeRole(member.isAdmin ? 'member' : 'admin'),
-              child: Text(member.isAdmin ? 'Despromover' : 'Promover'),
-            )
-          : Text(member.isAdmin ? 'Admin' : 'Membro'),
+      additionalInfo: role,
+      trailing: isAdmin ? const CupertinoListTileChevron() : null,
+      onTap: isAdmin ? onTap : null,
     );
   }
 }

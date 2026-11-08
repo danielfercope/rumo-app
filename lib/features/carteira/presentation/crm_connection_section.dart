@@ -133,34 +133,63 @@ class CrmConnectionSection extends ConsumerWidget {
 
     final connection = ref.watch(crmConnectionProvider(groupId));
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Integração com CRM',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        connection.when(
-          skipLoadingOnReload: true,
-          loading: () => const Center(child: CupertinoActivityIndicator()),
-          error: (e, _) => Text('Erro ao carregar a integração: $e'),
-          data: (conn) => conn == null
-              ? _buildDisconnected(context, ref)
-              : _buildConnected(context, ref, conn),
-        ),
-      ],
+    return connection.when(
+      skipLoadingOnReload: true,
+      loading: () => _section(
+        children: const [
+          CupertinoListTile.notched(
+            title: Center(child: CupertinoActivityIndicator()),
+          ),
+        ],
+      ),
+      error: (e, _) => _section(
+        children: [
+          CupertinoListTile.notched(
+            title: Text('Erro ao carregar a integração: $e',
+                style: const TextStyle(color: CupertinoColors.destructiveRed)),
+          ),
+        ],
+      ),
+      data: (conn) => conn == null
+          ? _buildDisconnected(context, ref)
+          : _buildConnected(context, ref, conn),
     );
   }
 
+  Widget _section({required List<Widget> children, Widget? footer}) =>
+      CupertinoListSection.insetGrouped(
+        header: const Text('Integração com CRM'),
+        footer: footer,
+        children: children,
+      );
+
+  Widget _badge(IconData icon, Color color) => Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18, color: CupertinoColors.white),
+      );
+
+  Widget _action(String label, VoidCallback onTap,
+          {Color color = CupertinoColors.activeBlue}) =>
+      CupertinoListTile.notched(
+        title: Text(label, style: TextStyle(color: color)),
+        onTap: onTap,
+      );
+
   Widget _buildDisconnected(BuildContext context, WidgetRef ref) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return _section(
+      footer: const Text('Nenhum CRM conectado. Conecte o HubSpot para '
+          'importar sua carteira de clientes e leads.'),
       children: [
-        const Text('Nenhum CRM conectado. Conecte o HubSpot para importar sua '
-            'carteira de clientes e leads.'),
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: () => _openWizard(context, ref),
-          child: const Text('Conectar HubSpot'),
+        CupertinoListTile.notched(
+          leading: _badge(CupertinoIcons.link, CupertinoColors.systemOrange),
+          title: const Text('Conectar HubSpot',
+              style: TextStyle(color: CupertinoColors.activeBlue)),
+          trailing: const CupertinoListTileChevron(),
+          onTap: () => _openWizard(context, ref),
         ),
       ],
     );
@@ -171,65 +200,46 @@ class CrmConnectionSection extends ConsumerWidget {
     final lastSync = ref.watch(lastSyncProvider(groupId)).valueOrNull;
     final importing = conn.status == CrmConnectionStatus.importando;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        switch (conn.status) {
-          CrmConnectionStatus.importando => const Row(
-              children: [
-                CupertinoActivityIndicator(),
-                SizedBox(width: 8),
-                Expanded(child: Text('Importando sua carteira…')),
-              ],
-            ),
-          CrmConnectionStatus.conectado => Text(
-              conn.ultimaSincronizacao == null
-                  ? 'HubSpot conectado'
-                  : 'HubSpot conectado · última sincronização em '
-                      '${_formatDateTime(conn.ultimaSincronizacao!)}',
-            ),
-          CrmConnectionStatus.erro => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Problema na integração',
-                    style: TextStyle(
-                        color: CupertinoColors.destructiveRed,
-                        fontWeight: FontWeight.w600)),
-                if (conn.ultimoErro != null) Text(conn.ultimoErro!),
-              ],
-            ),
-        },
-        if (lastSync != null) ...[
-          const SizedBox(height: 4),
-          Text(
+    final loadLine = lastSync == null
+        ? null
+        : Text(
             'Última carga: ${lastSync.lidas} lidas · ${lastSync.novas} novas · '
             '${lastSync.atualizadas} atualizadas'
             '${lastSync.falhas > 0 ? ' · ${lastSync.falhas} com falha' : ''}',
-            style: const TextStyle(color: CupertinoColors.systemGrey),
-          ),
-        ],
-        const SizedBox(height: 4),
-        Wrap(
-          children: [
-            if (!importing)
-              CupertinoButton(
-                padding: const EdgeInsets.only(right: 16),
-                onPressed: () => _syncNow(context, ref),
-                child: const Text('Sincronizar agora'),
-              ),
-            CupertinoButton(
-              padding: const EdgeInsets.only(right: 16),
-              onPressed: () => _openWizard(context, ref),
-              child: const Text('Reconectar'),
-            ),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: () => _disconnect(context, ref),
-              child: const Text('Desconectar',
-                  style: TextStyle(color: CupertinoColors.destructiveRed)),
-            ),
-          ],
+          );
+
+    final Widget status = switch (conn.status) {
+      CrmConnectionStatus.importando => const CupertinoListTile.notched(
+          leading: CupertinoActivityIndicator(),
+          title: Text('Importando sua carteira…'),
         ),
+      CrmConnectionStatus.conectado => CupertinoListTile.notched(
+          leading:
+              _badge(CupertinoIcons.checkmark_alt, CupertinoColors.systemGreen),
+          title: const Text('HubSpot conectado'),
+          subtitle: conn.ultimaSincronizacao == null
+              ? null
+              : Text('Última sincronização em '
+                  '${_formatDateTime(conn.ultimaSincronizacao!)}'),
+        ),
+      CrmConnectionStatus.erro => CupertinoListTile.notched(
+          leading: _badge(
+              CupertinoIcons.exclamationmark, CupertinoColors.destructiveRed),
+          title: const Text('Problema na integração',
+              style: TextStyle(color: CupertinoColors.destructiveRed)),
+          subtitle: conn.ultimoErro == null ? null : Text(conn.ultimoErro!),
+        ),
+    };
+
+    return _section(
+      footer: loadLine,
+      children: [
+        status,
+        if (!importing)
+          _action('Sincronizar agora', () => _syncNow(context, ref)),
+        _action('Reconectar', () => _openWizard(context, ref)),
+        _action('Desconectar', () => _disconnect(context, ref),
+            color: CupertinoColors.destructiveRed),
       ],
     );
   }

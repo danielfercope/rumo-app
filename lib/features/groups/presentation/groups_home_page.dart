@@ -13,6 +13,7 @@ class GroupsHomePage extends ConsumerWidget {
     final groupsAsync = ref.watch(myGroupsProvider);
 
     return CupertinoPageScaffold(
+      backgroundColor: CupertinoColors.systemGroupedBackground,
       navigationBar: const CupertinoNavigationBar(middle: Text('Equipe')),
       child: SafeArea(
         child: groupsAsync.when(
@@ -27,8 +28,8 @@ class GroupsHomePage extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('Não foi possível carregar os grupos',
-                      style: TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w600)),
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Text('$e',
                       textAlign: TextAlign.center,
