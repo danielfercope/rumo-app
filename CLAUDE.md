@@ -206,6 +206,9 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `tracking_history` | Histórico de localizações (append-only) |
 | `crm_sync_state` | Marca d'água da sincronização CRM → banco (maior ID de empresa do CRM já processado) |
 | `crm_sync_pending` | Empresas do CRM que falharam no ETL e aguardam nova tentativa (com backoff) |
+| `carteira_empresas` | Relação de uma organização (`groups`) com cada empresa: `status` cliente/lead/perdido (`009_carteira.sql`). `companies` segue global; empresa sem linha aqui é candidata a ser pontuada |
+| `crm_conexoes` | Conexão da organização com o CRM: token cifrado (nunca legível por `web_user`) + mapeamento de campos |
+| `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status |
 
 ### RPCs (Stored Procedures)
 
