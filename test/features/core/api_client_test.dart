@@ -13,6 +13,7 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(Uri.parse('http://localhost'));
+    registerFallbackValue(http.Request('GET', Uri.parse('http://localhost')));
   });
 
   setUp(() {
@@ -158,6 +159,71 @@ void main() {
           headers: any(named: 'headers'), body: any(named: 'body'))).captured;
       final uri = captured.single as Uri;
       expect(uri.path, '/backend/crm');
+    });
+  });
+
+  group('backendRequest', () {
+    http.StreamedResponse streamed(String body, int status) =>
+        http.StreamedResponse(Stream.value(utf8.encode(body)), status);
+
+    test('PUT envia o corpo JSON e o token', () async {
+      when(() => mockClient.send(any()))
+          .thenAnswer((_) async => streamed('{"situacao":"pendente"}', 202));
+
+      final result = await apiClient.backendRequest('PUT', 'carteira/conexao',
+          body: {'group_id': 'g1'});
+
+      expect(result, {'situacao': 'pendente'});
+      final request = verify(() => mockClient.send(captureAny()))
+          .captured
+          .single as http.Request;
+      expect(request.method, 'PUT');
+      expect(request.url.path, '/backend/carteira/conexao');
+      expect(jsonDecode(request.body), {'group_id': 'g1'});
+      expect(request.headers['Authorization'], 'Bearer token-de-teste');
+    });
+
+    test('DELETE com query string e resposta 204 devolve null', () async {
+      when(() => mockClient.send(any()))
+          .thenAnswer((_) async => streamed('', 204));
+
+      final result = await apiClient.backendRequest('DELETE', 'carteira/conexao',
+          query: {'group_id': 'g1', 'apagar_carteira': 'true'});
+
+      expect(result, isNull);
+      final request = verify(() => mockClient.send(captureAny()))
+          .captured
+          .single as http.Request;
+      expect(request.url.queryParameters,
+          {'group_id': 'g1', 'apagar_carteira': 'true'});
+      expect(request.body, isEmpty);
+    });
+  });
+
+  group('ApiException.fromResponse', () {
+    test('lê "detail" em texto (formato do FastAPI)', () {
+      final e = ApiException.fromResponse(
+          http.Response(jsonEncode({'detail': 'O CRM recusou o token'}), 400));
+      expect(e.message, 'O CRM recusou o token');
+      expect(e.statusCode, 400);
+    });
+
+    test('junta as mensagens de um "detail" em lista (422)', () {
+      final e = ApiException.fromResponse(http.Response(
+          jsonEncode({
+            'detail': [
+              {'loc': ['body', 'token'], 'msg': 'campo obrigatório'},
+              {'loc': ['body', 'group_id'], 'msg': 'inválido'},
+            ]
+          }),
+          422));
+      expect(e.message, 'campo obrigatório; inválido');
+    });
+
+    test('"message" do PostgREST continua tendo prioridade', () {
+      final e = ApiException.fromResponse(http.Response(
+          jsonEncode({'message': 'JWSInvalidSignature', 'detail': 'x'}), 401));
+      expect(e.message, 'JWSInvalidSignature');
     });
   });
 }

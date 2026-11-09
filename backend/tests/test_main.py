@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
+from app.internal_token import mint_internal_token
 from app.errors import (
     CnpjNotFoundError,
     CrmCompanyNotFoundError,
@@ -16,6 +17,12 @@ from app.errors import (
 def client():
     # Sem `with`: não dispara o lifespan (testado à parte, abaixo).
     return TestClient(main.app)
+
+
+@pytest.fixture
+def auth():
+    token = mint_internal_token("uid-1")["token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_health(client):
@@ -56,7 +63,7 @@ def test_auth_exchange_exige_o_header(client):
     [(None, 200), (CnpjNotFoundError("sem cnpj"), 404),
      (UpstreamIntegrationError("brasilapi fora"), 502)],
 )
-def test_company_lookup(client, monkeypatch, error, status):
+def test_company_lookup(client, auth, monkeypatch, error, status):
     async def fake(cnpj):
         if error:
             raise error
@@ -64,7 +71,7 @@ def test_company_lookup(client, monkeypatch, error, status):
 
     monkeypatch.setattr(main.company_lookup_service, "lookup_cnpj", fake)
 
-    response = client.post("/company-lookup", json={"cnpj": "123"})
+    response = client.post("/company-lookup", json={"cnpj": "123"}, headers=auth)
 
     assert response.status_code == status
     if status == 200:
@@ -76,7 +83,7 @@ def test_company_lookup(client, monkeypatch, error, status):
     [(None, 200), (CrmCompanyNotFoundError("sem empresa"), 404),
      (UpstreamIntegrationError("crm fora"), 502)],
 )
-def test_crm(client, monkeypatch, error, status):
+def test_crm(client, auth, monkeypatch, error, status):
     async def fake(payload):
         if error:
             raise error
@@ -85,7 +92,7 @@ def test_crm(client, monkeypatch, error, status):
     monkeypatch.setattr(main.crm_service, "handle", fake)
 
     response = client.post(
-        "/crm", json={"action": "getNotesWithOwners", "cnpj": "123"}
+        "/crm", json={"action": "getNotesWithOwners", "cnpj": "123"}, headers=auth
     )
 
     assert response.status_code == status
@@ -93,10 +100,48 @@ def test_crm(client, monkeypatch, error, status):
         assert response.json() == {"notes": []}
 
 
-def test_crm_rejeita_acao_desconhecida(client):
-    response = client.post("/crm", json={"action": "apagarTudo", "cnpj": "1"})
+def test_crm_rejeita_acao_desconhecida(client, auth):
+    response = client.post(
+        "/crm", json={"action": "apagarTudo", "cnpj": "1"}, headers=auth
+    )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "path, body",
+    [
+        ("/company-lookup", {"cnpj": "123"}),
+        ("/crm", {"action": "getNotesWithOwners", "cnpj": "123"}),
+    ],
+)
+def test_endpoints_de_dados_exigem_autenticacao(client, monkeypatch, path, body):
+    called = []
+
+    async def fake(payload):
+        called.append(payload)
+        return {}
+
+    monkeypatch.setattr(main.company_lookup_service, "lookup_cnpj", fake)
+    monkeypatch.setattr(main.crm_service, "handle", fake)
+
+    sem_header = client.post(path, json=body)
+    token_ruim = client.post(
+        path, json=body, headers={"Authorization": "Bearer lixo"}
+    )
+    token_do_job = client.post(
+        path,
+        json=body,
+        headers={
+            "Authorization": "Bearer "
+            + mint_internal_token("crm-sync", role="crm_sync")["token"]
+        },
+    )
+
+    assert sem_header.status_code == 422  # header obrigatório ausente
+    assert token_ruim.status_code == 401
+    assert token_do_job.status_code == 401
+    assert called == []  # nenhuma consulta chegou ao CRM/BrasilAPI
 
 
 @pytest.fixture

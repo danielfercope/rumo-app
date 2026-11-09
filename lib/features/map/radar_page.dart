@@ -63,7 +63,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   // Marcador da própria localização: foto do usuário ou as iniciais do nome.
   BitmapDescriptor? _iconMe;
   String _myInitials = '?';
-  String? _myPhotoUrl;
+  Uint8List? _myPhoto;
 
   @override
   void dispose() {
@@ -99,19 +99,18 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
   Future<void> _loadMyAvatar(String name) async {
     final initials = userInitials(name);
-    String? photoUrl;
+    Uint8List? photo;
     try {
-      photoUrl = ref.read(userPhotoUrlProvider);
+      photo = await ref.read(userPhotoProvider.future);
     } catch (_) {}
     if (mounted) {
       setState(() {
         _myInitials = initials;
-        _myPhotoUrl = photoUrl;
+        _myPhoto = photo;
       });
     }
     try {
-      final png = await renderUserAvatarPng(
-          initials: initials, photo: await fetchUserPhoto(photoUrl));
+      final png = await renderUserAvatarPng(initials: initials, photo: photo);
       if (mounted) {
         setState(
             () => _iconMe = BitmapDescriptor.bytes(png, width: 44, height: 44));
@@ -525,7 +524,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                   size: 44,
                   child: UserAvatar(
                     initials: _myInitials,
-                    photoUrl: _myPhotoUrl,
+                    photo: _myPhoto,
                     size: 44,
                   ),
                 ),

@@ -15,7 +15,8 @@ import '../../../helpers/fakes.dart';
 
 class MockCrmService extends Mock implements CrmService {}
 
-class _FakeLauncher extends UrlLauncherPlatform with MockPlatformInterfaceMixin {
+class _FakeLauncher extends UrlLauncherPlatform
+    with MockPlatformInterfaceMixin {
   @override
   LinkDelegate? get linkDelegate => null;
 
@@ -68,7 +69,8 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [crmServiceProvider.overrideWithValue(crm)],
       child: CupertinoApp(
-        home: CupertinoPageScaffold(child: CompanyDetailsModal(company: company)),
+        home:
+            CupertinoPageScaffold(child: CompanyDetailsModal(company: company)),
       ),
     ));
     await tester.pumpAndSettle();
@@ -141,12 +143,12 @@ void main() {
 
   testWidgets('empresa sem CNPJ não consulta o CRM e avisa', (tester) async {
     await pumpModal(tester, buildCompany(cnpj: null));
-    expect(find.text('CNPJ não disponível para busca no CRM.'),
-        findsOneWidget);
+    expect(find.text('CNPJ não disponível para busca no CRM.'), findsOneWidget);
     verifyNever(() => crm.getNotesWithOwners(any()));
   });
 
-  testWidgets('sem nome fantasia usa a razão social e sem coordenadas esconde rota',
+  testWidgets(
+      'sem nome fantasia usa a razão social e sem coordenadas esconde rota',
       (tester) async {
     await pumpModal(
         tester,
@@ -213,8 +215,8 @@ void main() {
   group('Nova Nota', () {
     setUp(() {
       when(() => crm.addNoteToCompany(
-              cnpj: any(named: 'cnpj'), noteText: any(named: 'noteText')))
-          .thenAnswer((_) async {});
+          cnpj: any(named: 'cnpj'),
+          noteText: any(named: 'noteText'))).thenAnswer((_) async {});
     });
 
     testWidgets('não salva nota vazia', (tester) async {
@@ -256,6 +258,13 @@ void main() {
       await tester.tap(find.text('Salvar'));
       await tester.pumpAndSettle();
       expect(find.text('CRM fora do ar'), findsOneWidget);
+    });
+
+    testWidgets('segue a paleta escura do app', (tester) async {
+      await pumpModal(tester, buildCompany());
+      await tester.tap(find.text('Nova Nota'));
+      await tester.pumpAndSettle();
+      expectDarkSheet(tester);
     });
 
     testWidgets('Cancelar fecha a folha', (tester) async {
@@ -327,6 +336,11 @@ void main() {
       expect(find.text('Falhou'), findsOneWidget);
     });
 
+    testWidgets('segue a paleta escura do app', (tester) async {
+      await open(tester);
+      expectDarkSheet(tester);
+    });
+
     testWidgets('Cancelar fecha a folha', (tester) async {
       await open(tester);
       await tester.tap(find.text('Cancelar'));
@@ -334,4 +348,25 @@ void main() {
       expect(find.text('Cancelar'), findsNothing);
     });
   });
+}
+
+/// A folha segue a paleta escura do app (fundo preto, campos cinza-escuro,
+/// texto branco), como o filtro e o cadastro de empresa.
+void expectDarkSheet(WidgetTester tester) {
+  final sheet = tester.widgetList<Container>(find.byType(Container)).where((c) {
+    final d = c.decoration;
+    return d is BoxDecoration &&
+        d.color == CupertinoColors.black &&
+        d.borderRadius == const BorderRadius.vertical(top: Radius.circular(20));
+  });
+  expect(sheet, hasLength(1), reason: 'fundo preto na folha');
+
+  final fields =
+      tester.widgetList<CupertinoTextField>(find.byType(CupertinoTextField));
+  expect(fields, isNotEmpty);
+  for (final f in fields) {
+    expect((f.decoration as BoxDecoration).color,
+        CupertinoColors.darkBackgroundGray);
+    expect(f.style?.color, CupertinoColors.white);
+  }
 }

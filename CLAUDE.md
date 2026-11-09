@@ -66,7 +66,20 @@ lib/
     │       ├── filter_modal.dart      # Modal de filtros avançados
     │       └── company_details_modal.dart # Detalhes da empresa + CRM
     │
-    ├── leads/                         # Feature de busca textual de leads
+    ├── carteira/                      # Conexão da organização com o CRM (só admin do grupo) + prioridades dos leads
+    │   ├── models/crm_models.dart     # CrmProperty/CrmMapping/CrmPreview/CrmConnection/SyncLog
+    │   ├── models/priority_models.dart # PriorityResult/PriorityItem/PriorityStrategy (GET /carteira/prioridade)
+    │   ├── services/carteira_service.dart # validar/prévia/conectar/sincronizar/desconectar
+    │   │                              # (Backend) + leitura de crm_conexoes/sincronizacoes (PostgREST)
+    │   ├── providers/carteira_provider.dart # crmConnectionProvider (se reconsulta a cada 5 s
+    │   │                              # enquanto a carga inicial roda) + lastSyncProvider +
+    │   │                              # priorityProvider (idem enquanto o cálculo não existe)
+    │   └── presentation/
+    │       ├── priority_sliver.dart   # visão "Prioridades" da aba Leads: lista com nota e motivos sempre visíveis
+    │       ├── crm_connection_section.dart # status + ações, dentro de GroupManagementView
+    │       └── crm_connection_wizard.dart  # token → campos → prévia → conectar
+    │
+    ├── leads/                         # Busca textual de leads + visão "Prioridades" (segmento no topo)
     │   ├── leads_page.dart
     │   └── leads_search_provider.dart # leadsSearchQueryProvider + leadsResultsProvider
     │
@@ -206,12 +219,16 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `tracking_history` | Histórico de localizações (append-only) |
 | `crm_sync_state` | Marca d'água da sincronização CRM → banco (maior ID de empresa do CRM já processado) |
 | `crm_sync_pending` | Empresas do CRM que falharam no ETL e aguardam nova tentativa (com backoff) |
+| `carteira_empresas` | Relação de uma organização (`groups`) com cada empresa: `status` cliente/lead/perdido (`009_carteira.sql`). `companies` segue global; empresa sem linha aqui é candidata a ser pontuada |
+| `crm_conexoes` | Conexão da organização com o CRM: token cifrado (nunca legível por `web_user`) + mapeamento de campos |
+| `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status (o incremental só deixa log se houve novidade ou erro) |
+| `carteira_pendencias` | Fila de retentativas (com backoff) da sincronização por conexão — análoga à `crm_sync_pending`, mas com a conexão na chave (`011_carteira_pendencias.sql`) |
 
 ### RPCs (Stored Procedures)
 
 | Função | Parâmetros | Retorno |
 |---|---|---|
-| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit | `List<Company>` — unifica busca por raio, texto e filtros num único endpoint |
+| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit, group_id | `List<Company>` — unifica busca por raio, texto e filtros num único endpoint. Com `group_id` (organização ativa), `cliente` e `status_carteira` vêm da `carteira_empresas` daquela organização (exige ser membro); sem ele, usa o flag global `companies.is_client` |
 | `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` |
 | `ensure_profile` | nome, departamento | Cria/retorna o `profile` do usuário autenticado |
 
@@ -243,6 +260,28 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 - Falhas (CNPJ não achado, sem coordenada, rede) vão pra `crm_sync_pending` com backoff e máximo de 5 tentativas; a marca d'água avança além delas.
 - Acesso ao banco via PostgREST (`PostgrestClient`) com token interno de papel `crm_sync` (privilégio mínimo, `db/schema/008_crm_sync.sql`) — o Backend não tem driver de Postgres.
 - **Desligada por padrão** (`CRM_SYNC_ENABLED=false`). Em produção, ligue com `infra/scripts/enable_crm_sync.sh` (`INSTANCE_ID=<id>`), nesta ordem: `migrate` (aplica a `008` — o schema só roda sozinho em banco vazio) → `config` (grava `GEOCODING_API_KEY` no Secrets Manager e atualiza o `infra/.env` da EC2) → `backfill` (importa o histórico do CRM uma vez; paginado por ID, idempotente) → `enable` (liga o job). `status` mostra logs, marca d'água, pendências e contagens. `DRY_RUN=1` só mostra o que seria feito. Sem backfill, a primeira execução do job só parte do maior ID atual do CRM, sem importar nada.
+
+**Sincronização por organização** (`backend/app/services/carteira_sync_service.py`) — substitui, por conexão, o sync de conta única acima (que continua no código, desligado). Cada organização conecta o próprio CRM com um token (`crm_conexoes`, cifrado com Fernet por `CRM_TOKEN_ENCRYPTION_KEY`); a cada `CRM_SYNC_INTERVAL_SECONDS` o job percorre as conexões `ativa`, em sequência:
+- Lê do CRM só o que **mudou** desde a marca d'água `crm_conexoes.ultima_modificacao_crm` (por data de modificação, com a mesma janela de sobreposição), então pega mudança de status e não só empresa nova. Marca d'água gravada por página, então uma carga que cai no meio retoma dali.
+- `CrmConnector` (`crm_connector.py`) é a interface por CRM (`validate`, `list_properties`, `fetch_changes`); `HubSpotConnector` é o primeiro. Só dados de **empresa** são lidos (nunca contatos/notas/negócios). `CrmMapping` (`crm_conexoes.mapeamento`) diz qual propriedade é o CNPJ e que valores do estágio significam cliente/perdido (o resto é lead).
+- `companies` é global: CNPJ já trazido por outra organização não é reconsultado na BrasilAPI/Google. O status vai pra `carteira_empresas`. Falhas por empresa vão pra `carteira_pendencias` (máx. 5 tentativas).
+- Sem novidade, escreve só `ultima_sincronizacao` na conexão. Ligar com `CRM_CONNECTIONS_SYNC_ENABLED=true` (exige `CRM_TOKEN_ENCRYPTION_KEY` e `GEOCODING_API_KEY`). **Perder/trocar a chave de cifra obriga todas as organizações a reconectar.** Em produção, a chave entra no Secrets Manager junto das demais variáveis de `infra/.env`.
+
+**Conectar o CRM** (`backend/app/services/carteira_connection_service.py`, rotas `/backend/carteira/*`) — identidade = o token interno que o app já usa (`Authorization: Bearer`), e só **admin da organização** (conferido em `group_members`, `012_crm_sync_group_members.sql`) conecta, sincroniza ou desconecta:
+
+| Rota | O que faz |
+|---|---|
+| `POST /carteira/conexao/validar` | Confere o token no CRM e lista as propriedades de empresa (pra o usuário mapear CNPJ e estágio). Sem estado |
+| `POST /carteira/conexao/previa` | Conta quantas empresas seriam importadas, por status (até 5.000; `truncado` se houver mais). Sem estado |
+| `PUT /carteira/conexao` | Grava a conexão (token cifrado) e dispara a carga inicial em segundo plano (202). Reconectar zera a marca d'água e relê tudo |
+| `POST /carteira/conexao/sincronizar?group_id=` | "Sincronizar agora" (202; 409 se já houver uma em andamento) |
+| `DELETE /carteira/conexao?group_id=&apagar_carteira=` | Desconecta; com `apagar_carteira=true` remove também as linhas de origem `crm` |
+
+O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada. O status da conexão o app lê direto pelo PostgREST (`crm_conexoes`, sem a coluna do token, e `sincronizacoes`) — **sempre com `select` explícito em `crm_conexoes`**: o GRANT por coluna faz o PostgREST negar `select=*`. A tela é `lib/features/carteira/`; `ApiClient.backendRequest` faz PUT/DELETE/query nas rotas do Backend e `ApiException` lê tanto `message` (PostgREST) quanto `detail` (FastAPI). Sem `CRM_TOKEN_ENCRYPTION_KEY` as rotas respondem 503. O handler de 422 omite o campo `input` do erro: ele traria o corpo inteiro, com o token.
+
+**Prioridade dos leads** (`priority_service.py`, `priority_score.py`, `logistic_score.py`, `cold_start_priority.py`) — o resultado é **calculado ao fim de cada sincronização que mudou a carteira** (ou quando ainda não há resultado) e **gravado**: `prioridade_modelos` (estratégia, tamanhos, modelo em jsonb) e `carteira_prioridade` (um lead por linha, já ordenado, com nota e motivos; `014_carteira_prioridade.sql`). `GET /carteira/prioridade?group_id=&limit=` (qualquer membro) só LÊ essas tabelas: nunca varre `companies` nem recalcula. Só o papel `crm_sync` tem acesso a elas.
+- Estratégia pelo nº de clientes (`choose_strategy`): `< MIN_CLIENTS` (10) → **interação** (mais interações no CRM; empate pelo registro mais antigo; usa `crm_criado_em`/`num_interacoes` vindos de propriedades da empresa no HubSpot, `013_carteira_interacao.sql`); `>=` → **perfil** (baseline lookalike por razão de chances, naive Bayes com a priori na base). A regressão logística (`logistic_score.py`, numpy + L-BFGS próprio, sem scipy) existe e é avaliável, mas **ainda não está no seletor**: o limiar de troca deve sair de `model_comparison.learning_curve` com a carteira real.
+- O perfil lê a base `companies` (até 50.000 linhas) **a cada recálculo** (por sincronização, não por chamada). Desconectar com `apagar_carteira` apaga o resultado da organização.
 
 Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
 

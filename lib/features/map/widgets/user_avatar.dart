@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
-import 'package:http/http.dart' as http;
 
 /// "Daniel Pereira" -> "DP"; um nome só -> "D"; vazio -> "?".
 String userInitials(String name) {
@@ -14,33 +13,19 @@ String userInitials(String name) {
   return (first + last).toUpperCase();
 }
 
-/// Baixa a foto do usuário; `null` se faltar URL ou a rede/CORS falhar (quem
-/// chama cai nas iniciais).
-Future<Uint8List?> fetchUserPhoto(String? url) async {
-  if (url == null || url.isEmpty) return null;
-  try {
-    final res =
-        await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
-    return res.statusCode == 200 && res.bodyBytes.isNotEmpty
-        ? res.bodyBytes
-        : null;
-  } catch (_) {
-    return null;
-  }
-}
-
 /// Avatar redondo com borda branca: a foto, ou as iniciais sobre fundo azul.
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
     super.key,
     required this.initials,
-    this.photoUrl,
+    this.photo,
     this.size = 40,
     this.borderWidth = 3,
   });
 
   final String initials;
-  final String? photoUrl;
+  /// Bytes da foto (ver `userPhotoProvider`); sem eles, as iniciais.
+  final Uint8List? photo;
   final double size;
   final double borderWidth;
 
@@ -69,10 +54,10 @@ class UserAvatar extends StatelessWidget {
       // os cantos da imagem aparecendo por cima da borda.
       child: ClipOval(
         child: SizedBox.expand(
-          child: (photoUrl == null || photoUrl!.isEmpty)
+          child: photo == null || photo!.isEmpty
               ? fallback
-              : Image.network(
-                  photoUrl!,
+              : Image.memory(
+                  photo!,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => fallback,
                 ),

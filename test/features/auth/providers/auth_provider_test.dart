@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/core/services/api_client.dart';
+import 'package:rumo_app/core/services/photo_cache.dart';
 import 'package:rumo_app/features/auth/providers/auth_provider.dart';
 import 'package:rumo_app/features/auth/providers/profile_provider.dart';
 
@@ -14,17 +15,23 @@ class MockApiClient extends Mock implements ApiClient {}
 
 class MockRef extends Mock implements Ref {}
 
+class MockPhotoCache extends Mock implements PhotoCache {}
+
 void main() {
   late MockFirebaseAuth mockAuth;
   late MockApiClient mockApiClient;
   late MockRef mockRef;
+  late MockPhotoCache mockPhotoCache;
   late AuthController controller;
 
   setUp(() {
     mockAuth = MockFirebaseAuth();
     mockApiClient = MockApiClient();
     mockRef = MockRef();
+    mockPhotoCache = MockPhotoCache();
     when(() => mockRef.invalidate(profileProvider)).thenReturn(null);
+    when(() => mockRef.read(photoCacheProvider)).thenReturn(mockPhotoCache);
+    when(() => mockPhotoCache.clear()).thenAnswer((_) async {});
     controller = AuthController(mockApiClient, auth: mockAuth, ref: mockRef);
   });
 
@@ -137,7 +144,8 @@ void main() {
       verify(() => mockAuth.signOut()).called(1);
     });
 
-    test('limpa o token cacheado do ApiClient — sem isso, trocar de conta '
+    test(
+        'limpa o token cacheado do ApiClient — sem isso, trocar de conta '
         'sem reiniciar o app reaproveitaria o token da conta anterior',
         () async {
       when(() => mockAuth.signOut()).thenAnswer((_) async {});
@@ -146,6 +154,16 @@ void main() {
       await controller.signOut();
 
       verify(() => mockApiClient.clearCache()).called(1);
+    });
+
+    test('esquece a foto guardada — a próxima conta não herda a foto desta',
+        () async {
+      when(() => mockAuth.signOut()).thenAnswer((_) async {});
+      when(() => mockApiClient.clearCache()).thenReturn(null);
+
+      await controller.signOut();
+
+      verify(() => mockPhotoCache.clear()).called(1);
     });
   });
 }

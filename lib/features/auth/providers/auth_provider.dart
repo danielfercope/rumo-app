@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/app_config.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/photo_cache.dart';
 import 'profile_provider.dart';
 
 /// StreamProvider sobre idTokenChanges (não authStateChanges) pra também
@@ -28,6 +29,14 @@ final userPhotoUrlProvider = Provider<String?>((ref) {
     if (url != null && url.isNotEmpty) return url;
   }
   return null;
+});
+
+final photoCacheProvider = Provider<PhotoCache>((ref) => PhotoCache());
+
+/// Bytes da foto do usuário, vindos do cache (ver [PhotoCache]); `null` cai nas
+/// iniciais. Avatar do perfil e marcador do mapa leem daqui: um só pedido.
+final userPhotoProvider = FutureProvider<Uint8List?>((ref) {
+  return ref.watch(photoCacheProvider).load(ref.watch(userPhotoUrlProvider));
 });
 
 final authControllerProvider = Provider((ref) {
@@ -127,5 +136,6 @@ class AuthController {
   Future<void> signOut() async {
     await _auth.signOut();
     _apiClient.clearCache();
+    await _ref?.read(photoCacheProvider).clear();
   }
 }

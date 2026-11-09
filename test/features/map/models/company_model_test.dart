@@ -28,6 +28,15 @@ void main() {
       expect(company.distance, 1.5);
     });
 
+    test('lê o status da carteira; ausente = empresa desconhecida', () {
+      final naCarteira =
+          Company.fromJson({'id': '1', 'status_carteira': 'perdido'});
+      final candidata = Company.fromJson({'id': '2'});
+
+      expect(naCarteira.carteiraStatus, 'perdido');
+      expect(candidata.carteiraStatus, isNull);
+    });
+
     test('aceita coordenadas como string com vírgula decimal', () {
       final company = Company.fromJson({
         'id': 'abc-123',

@@ -65,6 +65,20 @@ class PostgrestClient:
             headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
+    async def update(
+        self, table: str, params: dict[str, str], values: dict
+    ) -> None:
+        """PATCH nas linhas que casam com `params`. Existe porque um upsert
+        parcial não serve: o INSERT do ON CONFLICT valida as colunas NOT NULL
+        antes de detectar o conflito."""
+        await self._request(
+            "PATCH",
+            f"/{table}",
+            params=params,
+            json=values,
+            headers={"Prefer": "return=minimal"},
+        )
+
     async def delete(self, table: str, params: dict[str, str]) -> None:
         await self._request("DELETE", f"/{table}", params=params)
 

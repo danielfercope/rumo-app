@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,7 +59,7 @@ class ProfilePage extends ConsumerWidget {
               if (profile != null) ...[
                 _Header(
                   profile: profile,
-                  photoUrl: ref.watch(userPhotoUrlProvider),
+                  photo: ref.watch(userPhotoProvider).valueOrNull,
                 ),
                 CupertinoListSection.insetGrouped(
                   header: const Text('Conta'),
@@ -154,10 +156,10 @@ class ProfilePage extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.profile, this.photoUrl});
+  const _Header({required this.profile, this.photo});
 
   final UserProfile profile;
-  final String? photoUrl;
+  final Uint8List? photo;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +167,7 @@ class _Header extends StatelessWidget {
       children: [
         UserAvatar(
           initials: userInitials(profile.nome),
-          photoUrl: photoUrl,
+          photo: photo,
           size: 84,
           borderWidth: 2,
         ),
