@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable, Sequence
 
 import httpx
 
+from . import relacionados
 from .labeling import Labeled
 
 BASE_URL = "https://api.hubapi.com"
@@ -25,6 +26,19 @@ CUSTOM_PROPERTIES = (
     ("cnpj", "CNPJ"),
     ("rumo_seed_lote", "Lote do seed (RUMO)"),
 )
+
+
+# tipos de associação padrão do HubSpot (HUBSPOT_DEFINED)
+CONTACT_TO_COMPANY = 1
+DEAL_TO_COMPANY = 5
+DEAL_TO_CONTACT = 3
+
+
+def _link(to_id: str, type_id: int) -> dict:
+    return {
+        "to": {"id": to_id},
+        "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": type_id}],
+    }
 
 
 class HubSpotError(Exception):
@@ -198,3 +212,112 @@ class HubSpotSeeder:
                 json={"inputs": [{"id": i} for i in chunk]},
             )
         return len(ids)
+
+    # ─── Contatos e negócios fictícios ──────────────────────────────────
+
+    async def _associated(self, from_type: str, to_type: str, ids: list[str]) -> dict[str, list[str]]:
+        """id da origem → ids associados (leitura em lote, v4)."""
+        found: dict[str, list[str]] = {}
+        for chunk in _chunks(ids, BATCH):
+            data = await self._request(
+                "POST",
+                f"/crm/v4/associations/{from_type}/{to_type}/batch/read",
+                json={"inputs": [{"id": i} for i in chunk]},
+            )
+            for row in data.get("results") or []:
+                found[row["from"]["id"]] = [str(t["toObjectId"]) for t in row.get("to") or []]
+        return found
+
+    async def _read_objects(self, object_type: str, ids: list[str], properties: list[str]) -> dict[str, dict]:
+        rows: dict[str, dict] = {}
+        for chunk in _chunks(ids, BATCH):
+            data = await self._request(
+                "POST",
+                f"/crm/v3/objects/{object_type}/batch/read",
+                json={"properties": properties, "inputs": [{"id": i} for i in chunk]},
+            )
+            for row in data.get("results") or []:
+                rows[row["id"]] = row.get("properties") or {}
+        return rows
+
+    async def related(self, lote: str, company_ids: list[str]) -> dict[str, dict[str, list[str]]]:
+        """company_id → {"contacts": [...], "deals": [...]} só do que é do lote."""
+        out = {i: {"contacts": [], "deals": []} for i in company_ids}
+        contact_links = await self._associated("companies", "contacts", company_ids)
+        deal_links = await self._associated("companies", "deals", company_ids)
+        contacts = await self._read_objects(
+            "contacts", sorted({c for v in contact_links.values() for c in v}), ["email"]
+        )
+        deals = await self._read_objects(
+            "deals", sorted({d for v in deal_links.values() for d in v}), ["dealname"]
+        )
+        for company_id in company_ids:
+            out[company_id]["contacts"] = [
+                c for c in contact_links.get(company_id, [])
+                if relacionados.is_seed_contact(contacts.get(c, {}))
+            ]
+            out[company_id]["deals"] = [
+                d for d in deal_links.get(company_id, [])
+                if relacionados.is_seed_deal(deals.get(d, {}), lote)
+            ]
+        return out
+
+    async def create_related(self, lote: str, items: list[tuple[str, dict, dict]]) -> tuple[int, int]:
+        """items: (company_id, propriedades do contato, propriedades do negócio).
+
+        Cria o que falta e associa contato↔empresa, negócio↔empresa e
+        negócio↔contato. Quem já tem contato/negócio do lote é preservado.
+        Devolve (contatos criados, negócios criados)."""
+        have = await self.related(lote, [i[0] for i in items])
+        new_contacts = [it for it in items if not have[it[0]]["contacts"]]
+
+        contact_id: dict[str, str] = {c: ids["contacts"][0] for c, ids in have.items() if ids["contacts"]}
+        for chunk in _chunks(new_contacts, BATCH):
+            data = await self._request(
+                "POST",
+                "/crm/v3/objects/contacts/batch/create",
+                json={"inputs": [
+                    {"properties": c, "associations": [_link(cid, CONTACT_TO_COMPANY)]}
+                    for cid, c, _ in chunk
+                ]},
+            )
+            by_email = {
+                (r.get("properties") or {}).get("email", "").lower(): r["id"]
+                for r in data.get("results") or []
+            }
+            for cid, props, _ in chunk:
+                contact_id[cid] = by_email[props["email"].lower()]
+
+        new_deals = [it for it in items if not have[it[0]]["deals"]]
+        for chunk in _chunks(new_deals, BATCH):
+            await self._request(
+                "POST",
+                "/crm/v3/objects/deals/batch/create",
+                json={"inputs": [
+                    {
+                        "properties": d,
+                        "associations": [
+                            _link(cid, DEAL_TO_COMPANY),
+                            _link(contact_id[cid], DEAL_TO_CONTACT),
+                        ],
+                    }
+                    for cid, _, d in chunk
+                ]},
+            )
+        return len(new_contacts), len(new_deals)
+
+    async def delete_related(self, lote: str) -> tuple[int, int]:
+        """Arquiva contatos e negócios do lote. Rode ANTES de apagar as empresas:
+        é a associação com a empresa que os encontra."""
+        companies = await self.existing(lote)
+        found = await self.related(lote, [v["id"] for v in companies.values()])
+        contacts = sorted({c for v in found.values() for c in v["contacts"]})
+        deals = sorted({d for v in found.values() for d in v["deals"]})
+        for object_type, ids in (("deals", deals), ("contacts", contacts)):
+            for chunk in _chunks(ids, BATCH):
+                await self._request(
+                    "POST",
+                    f"/crm/v3/objects/{object_type}/batch/archive",
+                    json={"inputs": [{"id": i} for i in chunk]},
+                )
+        return len(contacts), len(deals)
