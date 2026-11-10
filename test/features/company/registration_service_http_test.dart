@@ -43,9 +43,10 @@ void main() {
         .thenAnswer((_) async => null);
   });
 
-  Map<String, dynamic> savedBody() => verify(() => api.upsert(
-          'companies', captureAny(),
-          onConflict: 'cnpj')).captured.single as Map<String, dynamic>;
+  Map<String, dynamic> savedBody() =>
+      verify(() => api.upsert('companies', captureAny(), onConflict: 'cnpj'))
+          .captured
+          .single as Map<String, dynamic>;
 
   group('saveCompany', () {
     test('mapeia os campos da consulta de CNPJ para a tabela companies',
@@ -115,7 +116,8 @@ void main() {
             200);
       });
 
-      final geo = await withClient(client, () => service.geocodeAddress('Rua A, 10'));
+      final geo =
+          await withClient(client, () => service.geocodeAddress('Rua A, 10'));
       expect(geo.lat, -26.5);
       expect(geo.lon, -49.1);
       expect(geo.precisao, 'ROOFTOP');
@@ -141,8 +143,8 @@ void main() {
 
     test('lança mensagem amigável quando o endereço não é encontrado',
         () async {
-      final client = MockClient(
-          (_) async => http.Response(json.encode({'status': 'ZERO_RESULTS'}), 200));
+      final client = MockClient((_) async =>
+          http.Response(json.encode({'status': 'ZERO_RESULTS'}), 200));
       expect(
         withClient(client, () => service.geocodeAddress('x')),
         throwsA('Endereço não encontrado. Verifique o CNPJ informado.'),
@@ -176,7 +178,8 @@ void main() {
       expect(valueOf('Primeiro nome'), 'Ana');
       expect(valueOf('Nome da empresa'), 'Teste');
       expect(valueOf('CNPJ'), '12345678000199');
-      expect(valueOf('E-mail de quem está indicando o lead/cliente'), 'u@x.com');
+      expect(
+          valueOf('E-mail de quem está indicando o lead/cliente'), 'u@x.com');
       expect(valueOf('RUMO'), true);
     });
 
@@ -187,8 +190,8 @@ void main() {
         return http.Response('ok', 201);
       });
       await http.runWithClient(
-          () => service.sendToWebhook(
-              {..._dadosApi, 'fantasia': null}, form, '', ''),
+          () => service
+              .sendToWebhook({..._dadosApi, 'fantasia': null}, form, '', ''),
           () => client);
       final nome = (payload['assignments'] as List)
           .cast<Map>()

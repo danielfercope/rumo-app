@@ -492,7 +492,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                       BitmapDescriptor.defaultMarkerWithHue(
                           BitmapDescriptor.hueAzure),
                   infoWindow: const InfoWindow(title: 'Você está aqui'),
-                  zIndex: -1,
+                  zIndexInt: -1,
                 ),
             },
             circles: {

@@ -21,7 +21,8 @@ Map<String, dynamic> _myGroupJson({
   required String id,
   required String role,
   bool trackingEnabled = false,
-}) => {
+}) =>
+    {
       'role': role,
       'joined_at': '2026-10-25T12:00:00Z',
       'groups': {
@@ -87,8 +88,7 @@ void main() {
     expect(container.read(isActiveGroupAdminProvider), isTrue);
   });
 
-  test(
-      'activeGroupProvider cai pro primeiro grupo quando nenhum foi escolhido',
+  test('activeGroupProvider cai pro primeiro grupo quando nenhum foi escolhido',
       () async {
     when(() => groupService.listMyGroups(any())).thenAnswer(
       (_) async => [

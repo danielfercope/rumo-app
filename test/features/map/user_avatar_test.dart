@@ -51,8 +51,8 @@ void main() {
         (tester) async {
       await pump(tester, photo: _onePixelPng);
       expect(find.byType(Image), findsOneWidget);
-      expect(tester.widget<Image>(find.byType(Image)).image,
-          isA<MemoryImage>());
+      expect(
+          tester.widget<Image>(find.byType(Image)).image, isA<MemoryImage>());
     });
 
     testWidgets('bytes que não decodificam caem nas iniciais', (tester) async {

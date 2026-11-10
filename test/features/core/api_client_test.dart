@@ -170,8 +170,8 @@ void main() {
       when(() => mockClient.send(any()))
           .thenAnswer((_) async => streamed('{"situacao":"pendente"}', 202));
 
-      final result = await apiClient.backendRequest('PUT', 'carteira/conexao',
-          body: {'group_id': 'g1'});
+      final result = await apiClient
+          .backendRequest('PUT', 'carteira/conexao', body: {'group_id': 'g1'});
 
       expect(result, {'situacao': 'pendente'});
       final request = verify(() => mockClient.send(captureAny()))
@@ -187,7 +187,8 @@ void main() {
       when(() => mockClient.send(any()))
           .thenAnswer((_) async => streamed('', 204));
 
-      final result = await apiClient.backendRequest('DELETE', 'carteira/conexao',
+      final result = await apiClient.backendRequest(
+          'DELETE', 'carteira/conexao',
           query: {'group_id': 'g1', 'apagar_carteira': 'true'});
 
       expect(result, isNull);
@@ -212,8 +213,14 @@ void main() {
       final e = ApiException.fromResponse(http.Response(
           jsonEncode({
             'detail': [
-              {'loc': ['body', 'token'], 'msg': 'campo obrigatório'},
-              {'loc': ['body', 'group_id'], 'msg': 'inválido'},
+              {
+                'loc': ['body', 'token'],
+                'msg': 'campo obrigatório'
+              },
+              {
+                'loc': ['body', 'group_id'],
+                'msg': 'inválido'
+              },
             ]
           }),
           422));

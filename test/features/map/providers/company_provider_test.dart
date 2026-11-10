@@ -41,7 +41,8 @@ void main() {
     expect(repo.lastFilters?.segment, 'Varejo');
   });
 
-  test('companiesProvider devolve lista vazia enquanto a posição não chegou', () async {
+  test('companiesProvider devolve lista vazia enquanto a posição não chegou',
+      () async {
     final repo = FakeCompanyRepository(companies: [buildCompany()]);
     final container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),

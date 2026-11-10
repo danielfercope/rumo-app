@@ -80,7 +80,8 @@ class FakeGoogleMapsPlatform extends GoogleMapsFlutterPlatform
       {required int mapId}) async {}
 
   @override
-  Future<void> updateClusterManagers(ClusterManagerUpdates clusterManagerUpdates,
+  Future<void> updateClusterManagers(
+      ClusterManagerUpdates clusterManagerUpdates,
       {required int mapId}) async {}
 
   @override

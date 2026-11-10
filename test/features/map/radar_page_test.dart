@@ -203,8 +203,8 @@ void main() {
     await pumpRadar(tester);
     expect(find.text('1 sem coord.'), findsOneWidget);
     // Só o marcador da própria localização; nenhuma empresa.
-    expect(map(tester).markers.map((m) => m.markerId.value),
-        ['__my_location__']);
+    expect(
+        map(tester).markers.map((m) => m.markerId.value), ['__my_location__']);
     await finish(tester);
   });
 

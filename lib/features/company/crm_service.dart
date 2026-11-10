@@ -102,8 +102,8 @@ final crmServiceProvider = Provider<CrmService>((ref) {
   return CrmService(ref.watch(apiClientProvider));
 });
 
-final crmNotesProvider = FutureProvider.autoDispose
-    .family<List<CrmNote>, String>((ref, cnpj) async {
+final crmNotesProvider =
+    FutureProvider.autoDispose.family<List<CrmNote>, String>((ref, cnpj) async {
   if (cnpj.isEmpty) return [];
   return ref.read(crmServiceProvider).getNotesWithOwners(cnpj);
 });
