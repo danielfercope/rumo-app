@@ -1,0 +1,40 @@
+# Caddy em produção (AWS) — TLS automático via Let's Encrypt (ACME HTTP-01 na porta 80,
+# serve HTTPS na 443). O hostname abaixo é substituído pelo UserData do CloudFormation
+# (infra/aws/backend-stack.yaml) com o valor real do parâmetro DomainName, caso seja
+# diferente deste default.
+#
+# O frontend (Flutter Web) e a API ficam no MESMO domínio: o navegador não faz
+# requisição cross-origin, então não há CORS em produção.
+
+rumo-app.duckdns.org {
+	handle_path /rest/* {
+		reverse_proxy postgrest:3000
+	}
+
+	handle_path /backend/* {
+		reverse_proxy backend:4000
+	}
+
+	# APK Android (make deploy-apk) — link público: /download/rumo.apk
+	handle_path /download/* {
+		root * /srv/downloads
+		header Content-Type application/vnd.android.package-archive
+		header Content-Disposition "attachment; filename=rumo.apk"
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# Flutter Web (make deploy-web). SPA: rota desconhecida cai no index.html.
+	handle {
+		root * /srv/web
+		encode gzip zstd
+		try_files {path} /index.html
+
+		# Arquivos sem hash no nome: nunca cachear (senão o navegador prende
+		# uma versão antiga do app via service worker).
+		@sem_cache path /index.html /main.dart.js /flutter.js /flutter_bootstrap.js /flutter_service_worker.js /version.json /env.js
+		header @sem_cache Cache-Control "no-cache"
+
+		file_server
+	}
+}

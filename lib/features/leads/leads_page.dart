@@ -2,13 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../carteira/presentation/priority_sliver.dart';
+import '../carteira/providers/carteira_provider.dart';
+import '../groups/providers/group_provider.dart';
 import '../map/providers/filter_provider.dart';
 import '../map/models/company_model.dart';
 import '../map/presentation/filter_modal.dart';
 import '../map/presentation/company_details_modal.dart';
 import 'leads_search_provider.dart';
 
-bool _looksLikeCnpj(String query) {
+bool looksLikeCnpj(String query) {
   if (query.isEmpty) return false;
   final digitCount = query.replaceAll(RegExp(r'[^\d]'), '').length;
   return RegExp(r'^[\d.\-/\s]+$').hasMatch(query) && digitCount >= 3;
@@ -22,6 +25,8 @@ class LeadsPage extends ConsumerStatefulWidget {
 }
 
 class _LeadsPageState extends ConsumerState<LeadsPage> {
+  // 0 = Buscar, 1 = Prioridades
+  int _mode = 0;
   int _selectedSegment = 0;
   String _searchQuery = '';
   bool _isCnpjMode = false;
@@ -42,7 +47,7 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
   }
 
   void _onSearchChanged(String value) {
-    final isCnpj = _looksLikeCnpj(value);
+    final isCnpj = looksLikeCnpj(value);
     setState(() {
       _searchQuery = value;
       _isCnpjMode = isCnpj;
@@ -77,6 +82,13 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
     if (filters.cnae != null) count++;
     if (filters.radius != 5.0) count++;
     return count;
+  }
+
+  Future<void> _refreshPriorities() async {
+    final groupId = ref.read(activeGroupProvider)?.group.id;
+    if (groupId == null) return;
+    ref.invalidate(priorityProvider(groupId));
+    await ref.read(priorityProvider(groupId).future);
   }
 
   void _openFilters() {
@@ -140,117 +152,142 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
               ],
             ),
           ),
+          if (_mode == 1)
+            CupertinoSliverRefreshControl(onRefresh: _refreshPriorities),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CupertinoSearchTextField(
-                    controller: _searchController,
-                    placeholder: 'Nome da empresa ou CNPJ...',
-                    onChanged: _onSearchChanged,
-                    onSuffixTap: () {
-                      _debounce?.cancel();
-                      _searchController.clear();
-                      setState(() {
-                        _searchQuery = '';
-                        _isCnpjMode = false;
-                      });
-                      ref.read(leadsSearchQueryProvider.notifier).state =
-                          const LeadsSearchQuery();
-                    },
-                  ),
-                  if (_searchQuery.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    _SearchModeChip(isCnpjMode: _isCnpjMode),
-                  ],
-                  if (filterCount > 0) ...[
-                    const SizedBox(height: 10),
-                    _ActiveFiltersRow(filters: filters),
-                  ],
-                  const SizedBox(height: 16),
-                  CupertinoSlidingSegmentedControl<int>(
-                    groupValue: _selectedSegment,
-                    children: const {
-                      0: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 20),
-                          child: Text('Todos')),
-                      1: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 20),
-                          child: Text('Ativos')),
-                      2: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 20),
-                          child: Text('Ganhos')),
-                    },
-                    onValueChanged: (v) =>
-                        setState(() => _selectedSegment = v ?? 0),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: CupertinoSlidingSegmentedControl<int>(
+                key: const ValueKey('leads-mode'),
+                groupValue: _mode,
+                children: const {
+                  0: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Text('Buscar')),
+                  1: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Text('Prioridades')),
+                },
+                onValueChanged: (v) => setState(() => _mode = v ?? 0),
               ),
             ),
           ),
-          resultsAsync.when(
-            data: (companies) {
-              if (companies == null) {
-                return const SliverFillRemaining(
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 32),
+          if (_mode == 1) ...[
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+            const PrioritySliver(),
+          ] else ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CupertinoSearchTextField(
+                      controller: _searchController,
+                      placeholder: 'Nome da empresa ou CNPJ...',
+                      onChanged: _onSearchChanged,
+                      onSuffixTap: () {
+                        _debounce?.cancel();
+                        _searchController.clear();
+                        setState(() {
+                          _searchQuery = '';
+                          _isCnpjMode = false;
+                        });
+                        ref.read(leadsSearchQueryProvider.notifier).state =
+                            const LeadsSearchQuery();
+                      },
+                    ),
+                    if (_searchQuery.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _SearchModeChip(isCnpjMode: _isCnpjMode),
+                    ],
+                    if (filterCount > 0) ...[
+                      const SizedBox(height: 10),
+                      _ActiveFiltersRow(filters: filters),
+                    ],
+                    const SizedBox(height: 16),
+                    CupertinoSlidingSegmentedControl<int>(
+                      groupValue: _selectedSegment,
+                      children: const {
+                        0: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20),
+                            child: Text('Todos')),
+                        1: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20),
+                            child: Text('Ativos')),
+                        2: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20),
+                            child: Text('Ganhos')),
+                      },
+                      onValueChanged: (v) =>
+                          setState(() => _selectedSegment = v ?? 0),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+            resultsAsync.when(
+              data: (companies) {
+                if (companies == null) {
+                  return const SliverFillRemaining(
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'Digite um nome ou CNPJ — ou aplique filtros — para consultar leads.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: CupertinoColors.systemGrey),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                final filtered = _applySegment(companies);
+
+                if (filtered.isEmpty) {
+                  return const SliverFillRemaining(
+                    child: Center(
                       child: Text(
-                        'Digite um nome ou CNPJ — ou aplique filtros — para consultar leads.',
-                        textAlign: TextAlign.center,
+                        'Nenhuma empresa encontrada.',
                         style: TextStyle(color: CupertinoColors.systemGrey),
                       ),
                     ),
+                  );
+                }
+
+                return SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (_, index) {
+                      final company = filtered[index];
+                      return CupertinoListTile(
+                        title: Text(
+                            company.fantasyName ?? company.name ?? 'Empresa'),
+                        subtitle: Text(company.segment ?? 'Sem segmento'),
+                        trailing: const CupertinoListTileChevron(),
+                        onTap: () {
+                          showCupertinoModalPopup(
+                            context: context,
+                            barrierDismissible: true,
+                            builder: (ctx) =>
+                                CompanyDetailsModal(company: company),
+                          );
+                        },
+                      );
+                    },
+                    childCount: filtered.length,
                   ),
                 );
-              }
-
-              final filtered = _applySegment(companies);
-
-              if (filtered.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(
-                    child: Text(
-                      'Nenhuma empresa encontrada.',
-                      style: TextStyle(color: CupertinoColors.systemGrey),
-                    ),
-                  ),
-                );
-              }
-
-              return SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (_, index) {
-                    final company = filtered[index];
-                    return CupertinoListTile(
-                      title: Text(
-                          company.fantasyName ?? company.name ?? 'Empresa'),
-                      subtitle: Text(company.segment ?? 'Sem segmento'),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: () {
-                        showCupertinoModalPopup(
-                          context: context,
-                          barrierDismissible: true,
-                          builder: (ctx) =>
-                              CompanyDetailsModal(company: company),
-                        );
-                      },
-                    );
-                  },
-                  childCount: filtered.length,
-                ),
-              );
-            },
-            loading: () => const SliverFillRemaining(
-              child: Center(child: CupertinoActivityIndicator()),
+              },
+              loading: () => const SliverFillRemaining(
+                child: Center(child: CupertinoActivityIndicator()),
+              ),
+              error: (e, s) => const SliverFillRemaining(
+                child: Center(child: Text('Erro ao carregar empresas')),
+              ),
             ),
-            error: (e, s) => const SliverFillRemaining(
-              child: Center(child: Text('Erro ao carregar empresas')),
-            ),
-          ),
+          ],
         ],
       ),
     );

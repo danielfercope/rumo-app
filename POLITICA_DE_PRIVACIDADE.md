@@ -27,7 +27,7 @@ Essa é a coleta de dado pessoal mais sensível feita pelo aplicativo, por ser c
 Utilizamos o Firebase Analytics e o Firebase Crashlytics (Google) para coletar, de forma agregada: telas visitadas, eventos de navegação, informações técnicas do dispositivo (modelo, sistema operacional) e relatórios de falhas (crashes) da aplicação. Esses dados são usados exclusivamente para melhorar a estabilidade e a experiência de uso do aplicativo.
 
 ### 1.4 Dados de empresas e leads
-O aplicativo permite cadastrar e consultar dados públicos de empresas (razão social, CNPJ, endereço, segmento) obtidos junto à API EmpresaAqui, e sincronizados com o CRM HubSpot. Esses dados dizem respeito a pessoas jurídicas (empresas prospectadas), não a dados pessoais de terceiros — exceto quando um contato individual (nome, e-mail, telefone) é cadastrado manualmente no CRM pelo próprio usuário durante o processo comercial.
+O aplicativo permite cadastrar e consultar dados públicos de empresas (razão social, CNPJ, endereço, segmento) obtidos junto à BrasilAPI (consulta pública de dados cadastrais de CNPJ), e sincronizados com o CRM HubSpot. Esses dados dizem respeito a pessoas jurídicas (empresas prospectadas), não a dados pessoais de terceiros — exceto quando um contato individual (nome, e-mail, telefone) é cadastrado manualmente no CRM pelo próprio usuário durante o processo comercial.
 
 ---
 
@@ -54,18 +54,17 @@ O tratamento dos dados de localização e cadastro se baseia na **execução de 
 
 | Terceiro | Dados compartilhados | Finalidade |
 |---|---|---|
-| Supabase (banco de dados e autenticação) | Todos os dados de cadastro e localização | Armazenamento e autenticação |
-| Google / Firebase | Dados de uso, diagnóstico, e-mail (login social) | Analytics, Crashlytics, autenticação |
+| Google / Firebase | Dados de cadastro, e-mail (login social), uso e diagnóstico | Autenticação, Analytics, Crashlytics |
 | HubSpot | Dados de empresas/leads e contatos comerciais inseridos pelo usuário | Gestão de CRM |
-| EmpresaAqui | CNPJ consultado (dado da empresa prospectada, não pessoal do usuário) | Enriquecimento cadastral de empresas |
+| BrasilAPI | CNPJ consultado (dado da empresa prospectada, não pessoal do usuário) | Enriquecimento cadastral de empresas |
 
-Nenhum desses terceiros está autorizado a usar os dados para finalidade diferente da contratada.
+Os dados de cadastro e de localização não ficam mais com um terceiro de banco de dados — são armazenados em infraestrutura própria (ver seção 5). Nenhum dos terceiros acima está autorizado a usar os dados para finalidade diferente da contratada.
 
 ---
 
 ## 5. Armazenamento e segurança
 
-Os dados são armazenados em banco de dados PostgreSQL gerenciado pelo Supabase, com autenticação obrigatória e controle de acesso por usuário. Senhas nunca são armazenadas em texto plano. Adotamos as medidas técnicas razoáveis disponíveis nas plataformas utilizadas (Supabase, Google/Firebase) para proteger os dados contra acesso não autorizado, perda ou vazamento.
+Os dados são armazenados em banco de dados PostgreSQL mantido em infraestrutura própria (self-hospedada), com autenticação obrigatória (via Google/Firebase) e controle de acesso por usuário. Senhas nunca são armazenadas em texto plano — a senha em si é gerenciada pelo Firebase Authentication, não pela nossa infraestrutura. Adotamos as medidas técnicas razoáveis disponíveis nas plataformas e na infraestrutura utilizadas para proteger os dados contra acesso não autorizado, perda ou vazamento.
 
 ## 6. Retenção dos dados
 

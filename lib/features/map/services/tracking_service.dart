@@ -1,15 +1,15 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/api_client.dart';
 import '../../auth/providers/profile_provider.dart';
 
 class TrackingService {
-  final SupabaseClient _supabase;
+  final ApiClient _apiClient;
   Timer? _timer;
   bool _running = false;
 
-  TrackingService(this._supabase);
+  TrackingService(this._apiClient);
 
   void startForUser(UserProfile profile) {
     if (_running) return;
@@ -33,7 +33,8 @@ class TrackingService {
       final now = DateTime.now().toIso8601String();
 
       await Future.wait([
-        _supabase.from('tracking_equipe').upsert(
+        _apiClient.upsert(
+          'tracking_equipe',
           {
             'user_id': profile.id,
             'email': profile.email,
@@ -44,7 +45,7 @@ class TrackingService {
           },
           onConflict: 'user_id',
         ),
-        _supabase.from('tracking_history').insert({
+        _apiClient.post('tracking_history', {
           'user_id': profile.id,
           'latitude': position.latitude,
           'longitude': position.longitude,
@@ -58,7 +59,7 @@ class TrackingService {
 }
 
 final trackingServiceProvider = Provider<TrackingService>((ref) {
-  final service = TrackingService(Supabase.instance.client);
+  final service = TrackingService(ref.watch(apiClientProvider));
   ref.onDispose(service.stop);
   return service;
 });

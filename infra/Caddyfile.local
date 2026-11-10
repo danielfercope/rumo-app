@@ -1,0 +1,44 @@
+# Caddy local (sem TLS) — espelha o roteamento por path que a produção
+# vai ter via Caddy+TLS (ver seção 4 do plano), pra testar a mesma estrutura
+# de URL (API_BASE_URL único, /rest/* e /backend/*) em dev e prod.
+#
+# CORS (só aqui, não em produção, e só em /backend/*): o PostgREST já manda
+# seus próprios cabeçalhos CORS por padrão (Access-Control-Allow-Origin: *,
+# preflight completo) — /rest/* nunca precisou de nada aqui, e adicionar
+# CORS duplicado quebraria o navegador (dois Access-Control-Allow-Origin na
+# mesma resposta é inválido). O serviço Python (/backend/*) é quem não manda
+# nenhum cabeçalho CORS — sem isso, toda chamada autenticada feita pelo app
+# no Chrome (dev-server numa porta própria, origem diferente da deste
+# Caddy) falha com "Failed to fetch". Em produção o plano é servir o
+# Flutter Web pelo mesmo domínio (mesma origem, sem CORS necessário) — ver
+# infra/Caddyfile.production, que não tem este bloco. Restrito a localhost
+# (qualquer porta): nada de "*", já que não há necessidade de liberar
+# outras origens em dev.
+
+:8080 {
+	handle_path /rest/* {
+		reverse_proxy postgrest:3000
+	}
+
+	handle_path /backend/* {
+		@cors_preflight {
+			method OPTIONS
+			header_regexp Origin ^https?://localhost(:[0-9]+)?$
+		}
+		@cors_origin header_regexp Origin ^https?://localhost(:[0-9]+)?$
+
+		handle @cors_preflight {
+			header Access-Control-Allow-Origin "{http.request.header.Origin}"
+			header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+			header Access-Control-Allow-Headers "Authorization, Content-Type"
+			header Access-Control-Max-Age "3600"
+			header Vary "Origin"
+			respond "" 204
+		}
+
+		header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
+		header @cors_origin Vary "Origin"
+
+		reverse_proxy backend:4000
+	}
+}

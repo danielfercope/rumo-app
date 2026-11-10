@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/api_client.dart';
 import '../models/company_model.dart';
 import '../providers/filter_provider.dart';
 import '../services/company_service.dart';
@@ -9,6 +9,7 @@ abstract class ICompanyRepository {
     required double userLat,
     required double userLong,
     MapFilters? filters,
+    String? groupId,
   });
 
   Future<List<Company>> searchByText({
@@ -16,6 +17,7 @@ abstract class ICompanyRepository {
     required bool isCnpj,
     MapFilters? filters,
     int limit = 200,
+    String? groupId,
   });
 
   Future<Map<String, dynamic>> getFilterOptions();
@@ -31,9 +33,13 @@ class CompanyRepository implements ICompanyRepository {
     required double userLat,
     required double userLong,
     MapFilters? filters,
+    String? groupId,
   }) =>
       _service.getCompanies(
-          userLat: userLat, userLong: userLong, filters: filters);
+          userLat: userLat,
+          userLong: userLong,
+          filters: filters,
+          groupId: groupId);
 
   @override
   Future<List<Company>> searchByText({
@@ -41,9 +47,14 @@ class CompanyRepository implements ICompanyRepository {
     required bool isCnpj,
     MapFilters? filters,
     int limit = 200,
+    String? groupId,
   }) =>
       _service.searchCompaniesText(
-          query: query, isCnpj: isCnpj, filters: filters, limit: limit);
+          query: query,
+          isCnpj: isCnpj,
+          filters: filters,
+          limit: limit,
+          groupId: groupId);
 
   @override
   Future<Map<String, dynamic>> getFilterOptions() =>
@@ -51,5 +62,5 @@ class CompanyRepository implements ICompanyRepository {
 }
 
 final companyRepositoryProvider = Provider<ICompanyRepository>((ref) {
-  return CompanyRepository(CompanyService(Supabase.instance.client));
+  return CompanyRepository(CompanyService(ref.watch(apiClientProvider)));
 });

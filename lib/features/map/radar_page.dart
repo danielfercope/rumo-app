@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:ui' as ui;
@@ -8,13 +10,18 @@ import 'package:flutter/services.dart';
 import 'providers/location_provider.dart';
 import 'providers/company_provider.dart';
 import 'providers/filter_provider.dart';
+import 'providers/map_backend_provider.dart';
 import '../auth/providers/profile_provider.dart';
+import '../groups/providers/group_provider.dart';
 import 'services/tracking_service.dart';
 import 'models/company_model.dart';
 import '../company/add_company_modal.dart';
 import 'presentation/filter_modal.dart';
 import 'presentation/company_details_modal.dart';
 import 'presentation/radar_viewmodel.dart';
+import 'widgets/osm_map.dart';
+import 'widgets/user_avatar.dart';
+import '../auth/providers/auth_provider.dart';
 
 class RadarPage extends ConsumerStatefulWidget {
   const RadarPage({super.key});
@@ -25,7 +32,16 @@ class RadarPage extends ConsumerStatefulWidget {
 
 class _RadarPageState extends ConsumerState<RadarPage> {
   late GoogleMapController mapController;
+  final fm.MapController _osmController = fm.MapController();
   bool _mapControllerReady = false;
+
+  // Google Maps ou fallback OpenStreetMap (ver map_backend_provider.dart).
+  // Atualizado a cada build.
+  bool _useGoogle = true;
+
+  /// Verdadeiro enquanto um modal está aberto: o mapa fica estático. No Web o
+  /// mapa é uma platform view e continuaria recebendo o arrastar por baixo.
+  bool _modalOpen = false;
   MapType _currentMapType = MapType.normal;
 
   DateTime? _lastTapTime;
@@ -34,16 +50,35 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   LatLng? _lastCameraPosition;
   bool _pendingAutoFit = false;
 
+  // Últimos dados exibidos, pra reenquadrar quando um novo mapa for criado
+  List<Company> _lastMappable = const [];
+  LatLng? _lastUserLatLng;
+
   final LatLng _defaultCenter = const LatLng(-26.4843, -49.0717);
 
   BitmapDescriptor? _iconLibria;
   BitmapDescriptor? _iconSaveId;
   BitmapDescriptor? _iconOtherClient;
 
+  // Marcador da própria localização: foto do usuário ou as iniciais do nome.
+  BitmapDescriptor? _iconMe;
+  String _myInitials = '?';
+  Uint8List? _myPhoto;
+
+  @override
+  void dispose() {
+    _osmController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     _loadIcons();
+    ref.listenManual(profileProvider, (_, next) {
+      final profile = next.value;
+      if (profile != null) _loadMyAvatar(profile.nome);
+    }, fireImmediately: true);
     // Esconde a lista após 10 segundos automaticamente
     Future.delayed(const Duration(seconds: 10), () {
       if (mounted) {
@@ -60,6 +95,29 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     return (await fi.image.toByteData(format: ui.ImageByteFormat.png))!
         .buffer
         .asUint8List();
+  }
+
+  Future<void> _loadMyAvatar(String name) async {
+    final initials = userInitials(name);
+    Uint8List? photo;
+    try {
+      photo = await ref.read(userPhotoProvider.future);
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _myInitials = initials;
+        _myPhoto = photo;
+      });
+    }
+    try {
+      final png = await renderUserAvatarPng(initials: initials, photo: photo);
+      if (mounted) {
+        setState(
+            () => _iconMe = BitmapDescriptor.bytes(png, width: 44, height: 44));
+      }
+    } catch (e) {
+      debugPrint('Erro ao gerar o avatar: $e');
+    }
   }
 
   Future<void> _loadIcons() async {
@@ -101,15 +159,50 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     }
   }
 
+  Widget _osmMarkerChild(Company company) {
+    final asset = company.isClient == true
+        ? switch (company.produto) {
+            'Libr.ia' => 'assets/libria.png',
+            'SaveID' => 'assets/save_id.png',
+            _ => 'assets/icon_save.webp',
+          }
+        : null;
+    if (asset != null) return Image.asset(asset, width: 35);
+    // Mesmo azul (hue 200) do pin padrão usado pro Google Maps.
+    return const Icon(CupertinoIcons.location_solid,
+        size: 35, color: Color(0xFF00AAFF));
+  }
+
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
+    _onMapReady();
+  }
+
+  void _onMapReady() {
     _mapControllerReady = true;
+    // O mapa é desmontado durante o reload (filtros mudando); o reenquadre
+    // pendente só pode rodar quando o novo controller existir.
+    if (_pendingAutoFit && _lastMappable.isNotEmpty) {
+      _pendingAutoFit = false;
+      _fitToMarkers(_lastMappable, _lastUserLatLng);
+    }
+  }
+
+  /// Indicador de carregamento. O GoogleMap sai da árvore enquanto ele está
+  /// visível, então o controller atual deixa de ser válido.
+  Widget _buildLoading() {
+    _mapControllerReady = false;
+    return const Center(child: CupertinoActivityIndicator());
   }
 
   void _syncCameraToPosition(LatLng target) {
     if (!_mapControllerReady) return;
     if (_lastCameraPosition == target) return;
     _lastCameraPosition = target;
+    if (!_useGoogle) {
+      _osmController.move(ll.LatLng(target.latitude, target.longitude), 14.0);
+      return;
+    }
     mapController.animateCamera(CameraUpdate.newCameraPosition(
       CameraPosition(target: target, zoom: 14.0),
     ));
@@ -141,6 +234,17 @@ class _RadarPageState extends ConsumerState<RadarPage> {
       if (userPos.longitude > maxLng) maxLng = userPos.longitude;
     }
 
+    if (!_useGoogle) {
+      _osmController.fitCamera(fm.CameraFit.bounds(
+        bounds: fm.LatLngBounds(
+          ll.LatLng(minLat - 0.01, minLng - 0.01),
+          ll.LatLng(maxLat + 0.01, maxLng + 0.01),
+        ),
+        padding: const EdgeInsets.all(60),
+      ));
+      return;
+    }
+
     mapController.animateCamera(
       CameraUpdate.newLatLngBounds(
         LatLngBounds(
@@ -159,15 +263,27 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     });
   }
 
+  Future<T?> _showModal<T>(WidgetBuilder builder,
+      {bool barrierDismissible = true}) async {
+    setState(() => _modalOpen = true);
+    try {
+      return await showCupertinoModalPopup<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) setState(() => _modalOpen = false);
+    }
+  }
+
   void _showFilters() {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => const FilterModal(),
-    );
+    _showModal<void>((context) => const FilterModal());
   }
 
   void _handleMarkerTap(Company company) {
-    if (kIsWeb) {
+    // Web e OSM não têm InfoWindow nativa: abre os detalhes direto.
+    if (kIsWeb || !_useGoogle) {
       _showCompanyDetails(company);
       return;
     }
@@ -186,15 +302,18 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   void _showCompanyDetails(Company company) {
-    showCupertinoModalPopup(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => CompanyDetailsModal(company: company),
-    );
+    _showModal<void>((context) => CompanyDetailsModal(company: company));
   }
 
   Future<void> _centerOnUser() async {
     final positionAsync = await ref.read(locationProvider.future);
+    if (!_useGoogle) {
+      if (_mapControllerReady) {
+        _osmController.move(
+            ll.LatLng(positionAsync.latitude, positionAsync.longitude), 16.0);
+      }
+      return;
+    }
     mapController.animateCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
@@ -206,10 +325,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   void _openAddCompany() async {
-    final result = await showCupertinoModalPopup<bool>(
-      context: context,
-      builder: (_) => const AddCompanyModal(),
-    );
+    final result = await _showModal<bool>((_) => const AddCompanyModal());
     if (result == true && mounted) {
       ref.invalidate(companiesProvider);
       _showSuccessToast();
@@ -240,13 +356,22 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final filters = ref.watch(mapFiltersProvider);
     final profileAsync = ref.watch(profileProvider);
     final uiState = ref.watch(radarViewModelProvider);
+    _useGoogle = ref.watch(useGoogleMapsProvider);
 
-    ref.listen<AsyncValue<UserProfile?>>(profileProvider, (_, next) {
-      next.whenData((profile) {
-        if (profile?.isExecutivo == true) {
-          ref.read(trackingServiceProvider).startForUser(profile!);
-        }
-      });
+    // O Google pode reportar falha de chave já com o mapa na tela (Web): o
+    // controller antigo deixa de valer e o novo mapa precisa reenquadrar.
+    ref.listen<bool>(useGoogleMapsProvider, (_, __) {
+      _mapControllerReady = false;
+      _pendingAutoFit = true;
+    });
+
+    ref.listen<bool>(shouldTrackProvider, (_, shouldTrack) {
+      final profile = ref.read(profileProvider).value;
+      if (shouldTrack && profile != null) {
+        ref.read(trackingServiceProvider).startForUser(profile);
+      } else {
+        ref.read(trackingServiceProvider).stop();
+      }
     });
 
     ref.listen<MapFilters>(mapFiltersProvider, (_, __) {
@@ -258,23 +383,23 @@ class _RadarPageState extends ConsumerState<RadarPage> {
         data: (position) => companiesAsync.when(
           data: (companies) => _buildContent(
               position, companies, filters.radius, uiState,
-              profile: profileAsync.value),
-          loading: () => const Center(child: CupertinoActivityIndicator()),
+              profile: profileAsync.valueOrNull),
+          loading: _buildLoading,
           error: (error, stack) => _buildContent(
               position, [], filters.radius, uiState,
               errorMessage: 'Erro ao buscar empresas. Verifique sua conexão.',
-              profile: profileAsync.value),
+              profile: profileAsync.valueOrNull),
         ),
-        loading: () => const Center(child: CupertinoActivityIndicator()),
+        loading: _buildLoading,
         error: (error, stack) => companiesAsync.when(
           data: (companies) => _buildContent(
               null, companies, filters.radius, uiState,
-              profile: profileAsync.value),
-          loading: () => const Center(child: CupertinoActivityIndicator()),
+              profile: profileAsync.valueOrNull),
+          loading: _buildLoading,
           error: (error, stack) => _buildContent(
               null, [], filters.radius, uiState,
               errorMessage: 'Erro ao buscar empresas. Verifique sua conexão.',
-              profile: profileAsync.value),
+              profile: profileAsync.valueOrNull),
         ),
       ),
     );
@@ -299,7 +424,13 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final mappableCompanies =
         sorted.where((c) => c.latitude != null && c.longitude != null).toList();
 
-    if (_pendingAutoFit && mappableCompanies.isNotEmpty) {
+    _lastMappable = mappableCompanies;
+    _lastUserLatLng =
+        position != null ? LatLng(position.latitude, position.longitude) : null;
+
+    if (_pendingAutoFit &&
+        mappableCompanies.isNotEmpty &&
+        _mapControllerReady) {
       _pendingAutoFit = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fitToMarkers(
@@ -323,51 +454,89 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
     return Stack(
       children: [
-        GoogleMap(
-          onMapCreated: _onMapCreated,
-          initialCameraPosition:
-              CameraPosition(target: initialTarget, zoom: 14.0),
-          mapType: _currentMapType,
-          myLocationEnabled: !kIsWeb,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          markers: {
-            ...mappableCompanies.map((company) {
-              return Marker(
-                markerId: MarkerId(company.id),
-                position: LatLng(company.latitude!, company.longitude!),
-                consumeTapEvents: true,
-                infoWindow: InfoWindow(
-                  title: company.fantasyName ?? company.name ?? 'Empresa',
-                  snippet: company.segment ??
-                      'CNAE: ${company.cnaePrincipal ?? "N/A"}',
-                  onTap: () => _showCompanyDetails(company),
+        if (_useGoogle)
+          GoogleMap(
+            onMapCreated: _onMapCreated,
+            initialCameraPosition:
+                CameraPosition(target: initialTarget, zoom: 14.0),
+            mapType: _currentMapType,
+            scrollGesturesEnabled: !_modalOpen,
+            zoomGesturesEnabled: !_modalOpen,
+            rotateGesturesEnabled: !_modalOpen,
+            tiltGesturesEnabled: !_modalOpen,
+            myLocationEnabled: false,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            markers: {
+              ...mappableCompanies.map((company) {
+                return Marker(
+                  markerId: MarkerId(company.id),
+                  position: LatLng(company.latitude!, company.longitude!),
+                  consumeTapEvents: true,
+                  infoWindow: InfoWindow(
+                    title: company.fantasyName ?? company.name ?? 'Empresa',
+                    snippet: company.segment ??
+                        'CNAE: ${company.cnaePrincipal ?? "N/A"}',
+                    onTap: () => _showCompanyDetails(company),
+                  ),
+                  onTap: () => _handleMarkerTap(company),
+                  icon: _getMarkerIcon(company),
+                );
+              }),
+              if (position != null)
+                Marker(
+                  markerId: const MarkerId('__my_location__'),
+                  position: LatLng(position.latitude, position.longitude),
+                  anchor: const Offset(0.5, 0.5),
+                  icon: _iconMe ??
+                      BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueAzure),
+                  infoWindow: const InfoWindow(title: 'Você está aqui'),
+                  zIndexInt: -1,
                 ),
-                onTap: () => _handleMarkerTap(company),
-                icon: _getMarkerIcon(company),
-              );
-            }),
-            if (kIsWeb && position != null)
-              Marker(
-                markerId: const MarkerId('__my_location__'),
-                position: LatLng(position.latitude, position.longitude),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueAzure),
-                infoWindow: const InfoWindow(title: 'Você está aqui'),
-                zIndex: 10,
+            },
+            circles: {
+              Circle(
+                circleId: const CircleId('radius_circle'),
+                center: initialTarget,
+                radius: radius * 1000,
+                fillColor: CupertinoColors.activeBlue.withValues(alpha: 0.05),
+                strokeColor: CupertinoColors.activeBlue.withValues(alpha: 0.2),
+                strokeWidth: 1,
               ),
-          },
-          circles: {
-            Circle(
-              circleId: const CircleId('radius_circle'),
-              center: initialTarget,
-              radius: radius * 1000,
-              fillColor: CupertinoColors.activeBlue.withValues(alpha: 0.05),
-              strokeColor: CupertinoColors.activeBlue.withValues(alpha: 0.2),
-              strokeWidth: 1,
-            ),
-          },
-        ),
+            },
+          )
+        else
+          OsmMap(
+            controller: _osmController,
+            center: ll.LatLng(initialTarget.latitude, initialTarget.longitude),
+            zoom: 14.0,
+            radiusMeters: radius * 1000,
+            onMapReady: _onMapReady,
+            interactive: !_modalOpen,
+            markers: [
+              if (position != null)
+                OsmMarkerData(
+                  id: '__my_location__',
+                  position: ll.LatLng(position.latitude, position.longitude),
+                  title: 'Você está aqui',
+                  alignment: Alignment.center,
+                  size: 44,
+                  child: UserAvatar(
+                    initials: _myInitials,
+                    photo: _myPhoto,
+                    size: 44,
+                  ),
+                ),
+              for (final company in mappableCompanies)
+                OsmMarkerData(
+                  id: company.id,
+                  position: ll.LatLng(company.latitude!, company.longitude!),
+                  onTap: () => _handleMarkerTap(company),
+                  child: _osmMarkerChild(company),
+                ),
+            ],
+          ),
 
         // Controles: tipo de mapa, filtros, adicionar empresa, contador
         Positioned(
@@ -376,15 +545,18 @@ class _RadarPageState extends ConsumerState<RadarPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              CupertinoButton(
-                padding: const EdgeInsets.all(12),
-                color: CupertinoColors.white.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(30),
-                onPressed: _toggleMapType,
-                child: const Icon(CupertinoIcons.layers_alt,
-                    color: CupertinoColors.activeBlue),
-              ),
-              const SizedBox(height: 8),
+              // O OSM não tem camada híbrida (satélite).
+              if (_useGoogle) ...[
+                CupertinoButton(
+                  padding: const EdgeInsets.all(12),
+                  color: CupertinoColors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(30),
+                  onPressed: _toggleMapType,
+                  child: const Icon(CupertinoIcons.layers_alt,
+                      color: CupertinoColors.activeBlue),
+                ),
+                const SizedBox(height: 8),
+              ],
               CupertinoButton(
                 padding: const EdgeInsets.all(12),
                 color: CupertinoColors.white.withValues(alpha: 0.9),

@@ -1,0 +1,197 @@
+import 'dart:convert';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+
+import '../app_config.dart';
+
+/// Erro retornado pelo PostgREST/Backend, parseado do corpo
+/// `{code, message, details, hint}` (formato padrão do PostgREST) ou
+/// `{detail}` (formato do FastAPI: texto, ou lista de `{loc, msg}` num 422).
+class ApiException implements Exception {
+  ApiException(this.message, {this.statusCode = 0, this.code});
+
+  final int statusCode;
+  final String message;
+  final String? code;
+
+  factory ApiException.fromResponse(http.Response response) {
+    try {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      return ApiException(
+        data['message'] as String? ??
+            _fastApiDetail(data['detail']) ??
+            'Erro desconhecido',
+        statusCode: response.statusCode,
+        code: data['code'] as String?,
+      );
+    } catch (_) {
+      return ApiException(
+        'Erro HTTP ${response.statusCode}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  static String? _fastApiDetail(dynamic detail) {
+    if (detail is String) return detail;
+    if (detail is List) {
+      final messages = detail
+          .map((e) => e is Map ? e['msg'] : null)
+          .whereType<String>()
+          .toList();
+      if (messages.isNotEmpty) return messages.join('; ');
+    }
+    return null;
+  }
+
+  @override
+  String toString() =>
+      'ApiException($statusCode${code != null ? ', $code' : ''}): $message';
+}
+
+/// Client HTTP fino para o novo Backend (PostgREST + serviço Python),
+/// substituindo o SupabaseClient. Troca o ID Token do Firebase por um token
+/// interno via `/backend/auth/exchange` (ver backend/app/main.py), cacheado
+/// até expirar.
+///
+/// `httpClient` e `accessTokenProvider` são injetáveis só pra teste (ver
+/// test/features/core/api_client_test.dart) — em produção usam os valores
+/// reais (http.Client() e o fluxo de troca de token via Firebase).
+class ApiClient {
+  ApiClient({
+    required this.baseUrl,
+    http.Client? httpClient,
+    Future<String> Function()? accessTokenProvider,
+  })  : _httpClient = httpClient ?? http.Client(),
+        _accessTokenProvider = accessTokenProvider;
+
+  final String baseUrl;
+  final http.Client _httpClient;
+  final Future<String> Function()? _accessTokenProvider;
+
+  String? _cachedToken;
+  int? _cachedTokenExpiresAt;
+
+  /// Limpa o token interno cacheado — chamado no logout. Sem isso, trocar de
+  /// conta sem reiniciar o app reaproveitaria o token exchangeado da conta
+  /// anterior até ele expirar, autenticando as chamadas seguintes com a
+  /// identidade errada.
+  void clearCache() {
+    _cachedToken = null;
+    _cachedTokenExpiresAt = null;
+  }
+
+  Future<String> _accessToken() async {
+    if (_accessTokenProvider != null) {
+      return _accessTokenProvider();
+    }
+
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (_cachedToken != null &&
+        _cachedTokenExpiresAt != null &&
+        nowSeconds < _cachedTokenExpiresAt! - 30) {
+      return _cachedToken!;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw ApiException('Usuário não autenticado', statusCode: 401);
+    }
+
+    final idToken = await user.getIdToken();
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl/backend/auth/exchange'),
+      headers: {'Authorization': 'Bearer $idToken'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException.fromResponse(response);
+    }
+
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    _cachedToken = data['token'] as String;
+    _cachedTokenExpiresAt = data['expires_at'] as int;
+    return _cachedToken!;
+  }
+
+  Future<Map<String, String>> _authHeaders() async => {
+        'Authorization': 'Bearer ${await _accessToken()}',
+        'Content-Type': 'application/json',
+      };
+
+  dynamic _decode(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body.isEmpty ? null : json.decode(response.body);
+    }
+    throw ApiException.fromResponse(response);
+  }
+
+  Future<dynamic> get(String table, {Map<String, String>? query}) async {
+    final uri =
+        Uri.parse('$baseUrl/rest/$table').replace(queryParameters: query);
+    final response = await _httpClient.get(uri, headers: await _authHeaders());
+    return _decode(response);
+  }
+
+  Future<dynamic> post(String table, Map<String, dynamic> body) async {
+    final uri = Uri.parse('$baseUrl/rest/$table');
+    final response = await _httpClient.post(uri,
+        headers: await _authHeaders(), body: json.encode(body));
+    return _decode(response);
+  }
+
+  /// Equivalente ao `.upsert(..., onConflict: x)` do Supabase.
+  Future<dynamic> upsert(
+    String table,
+    Map<String, dynamic> body, {
+    required String onConflict,
+  }) async {
+    final uri = Uri.parse('$baseUrl/rest/$table')
+        .replace(queryParameters: {'on_conflict': onConflict});
+    final headers = await _authHeaders();
+    headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
+    final response =
+        await _httpClient.post(uri, headers: headers, body: json.encode(body));
+    return _decode(response);
+  }
+
+  /// Equivalente ao `.rpc(nome, params: {...})` do Supabase — mesma forma
+  /// de parâmetros, só muda o transporte.
+  Future<dynamic> rpc(String fn, Map<String, dynamic> params) async {
+    final uri = Uri.parse('$baseUrl/rest/rpc/$fn');
+    final response = await _httpClient.post(uri,
+        headers: await _authHeaders(), body: json.encode(params));
+    return _decode(response);
+  }
+
+  /// Chama o Backend (ex.: company-lookup, crm) em vez de uma Edge Function.
+  Future<dynamic> backend(String path, Map<String, dynamic> body) async {
+    final uri = Uri.parse('$baseUrl/backend/$path');
+    final response = await _httpClient.post(uri,
+        headers: await _authHeaders(), body: json.encode(body));
+    return _decode(response);
+  }
+
+  /// Chamada ao Backend com qualquer método e query string (ex.:
+  /// `PUT carteira/conexao`, `DELETE carteira/conexao?group_id=...`).
+  /// Resposta sem corpo (204) devolve null.
+  Future<dynamic> backendRequest(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+  }) async {
+    final uri = Uri.parse('$baseUrl/backend/$path').replace(
+        queryParameters: query == null || query.isEmpty ? null : query);
+    final request = http.Request(method, uri)
+      ..headers.addAll(await _authHeaders());
+    if (body != null) request.body = json.encode(body);
+    final streamed = await _httpClient.send(request);
+    return _decode(await http.Response.fromStream(streamed));
+  }
+}
+
+final apiClientProvider = Provider<ApiClient>((ref) {
+  return ApiClient(baseUrl: AppConfig.apiBaseUrl);
+});

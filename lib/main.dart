@@ -5,14 +5,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'core/app_config.dart';
 import 'core/services/analytics_service.dart';
 import 'firebase_options.dart';
 import 'features/auth/login_page.dart';
-import 'features/auth/privacy_policy_page.dart';
+import 'features/auth/profile_page.dart';
 import 'features/leads/leads_page.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/groups/presentation/groups_home_page.dart';
 import 'features/map/radar_page.dart';
 
 Future<void> main() async {
@@ -29,11 +28,6 @@ Future<void> main() async {
       return true;
     };
   }
-
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
-  );
 
   runZonedGuarded(
     () => runApp(const ProviderScope(child: RumoApp())),
@@ -60,8 +54,8 @@ class RumoApp extends ConsumerWidget {
         primaryColor: CupertinoColors.systemYellow,
       ),
       home: authState.when(
-        data: (state) {
-          if (state.session != null) {
+        data: (user) {
+          if (user != null) {
             return const MainNavigation();
           }
           return const LoginPage();
@@ -75,7 +69,7 @@ class RumoApp extends ConsumerWidget {
   }
 }
 
-const _tabScreenNames = ['Radar', 'Leads', 'Perfil'];
+const _tabScreenNames = ['Radar', 'Leads', 'Perfil', 'Equipe'];
 
 class MainNavigation extends ConsumerWidget {
   const MainNavigation({super.key});
@@ -96,6 +90,8 @@ class MainNavigation extends ConsumerWidget {
               icon: Icon(CupertinoIcons.list_bullet), label: 'Leads'),
           BottomNavigationBarItem(
               icon: Icon(CupertinoIcons.person), label: 'Perfil'),
+          BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.person_2), label: 'Equipe'),
         ],
       ),
       tabBuilder: (context, index) {
@@ -107,39 +103,9 @@ class MainNavigation extends ConsumerWidget {
               case 1:
                 return const LeadsPage();
               case 2:
-                return CupertinoPageScaffold(
-                  navigationBar: const CupertinoNavigationBar(
-                    middle: Text('Perfil'),
-                  ),
-                  child: SafeArea(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CupertinoButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              CupertinoPageRoute(
-                                  builder: (_) => const PrivacyPolicyPage()),
-                            ),
-                            child: const Text('Política de Privacidade'),
-                          ),
-                          Consumer(
-                            builder: (context, ref, _) => CupertinoButton(
-                              color: CupertinoColors.destructiveRed,
-                              onPressed: () async {
-                                await ref
-                                    .read(authControllerProvider)
-                                    .signOut();
-                              },
-                              child: const Text('Sair da conta'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
+                return const ProfilePage();
+              case 3:
+                return const GroupsHomePage();
               default:
                 return const CupertinoPageScaffold(child: SizedBox.shrink());
             }

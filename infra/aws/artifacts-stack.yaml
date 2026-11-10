@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Bucket privado com os artefatos do frontend do RUMO (build do Flutter Web e APK
+  Android). O build e feito na maquina de quem faz o deploy; a EC2 do backend
+  (stack rumo-app-backend) apenas sincroniza o bucket pro volume que o Caddy serve.
+  Stack separada da do backend de proposito: nao mexe na instancia em producao.
+
+Parameters:
+  InstanceRoleName:
+    Type: String
+    Default: rumo-app-backend-instance-role
+    Description: Role da EC2 do backend (criada pela stack rumo-app-backend)
+
+Resources:
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub "rumo-app-artifacts-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Politica inline propria na role da instancia (nao altera as politicas
+  # definidas pela stack do backend): so leitura deste bucket.
+  InstanceReadsArtifacts:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: read-rumo-app-artifacts
+      Roles:
+        - !Ref InstanceRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !GetAtt ArtifactsBucket.Arn
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub "${ArtifactsBucket.Arn}/*"
+
+Outputs:
+  BucketName:
+    Value: !Ref ArtifactsBucket

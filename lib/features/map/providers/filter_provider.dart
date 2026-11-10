@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/company_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/company_repository.dart';
 
 class MapFilters {
   final String? segment;
@@ -36,12 +35,18 @@ class MapFilters {
     bool clearCnae = false,
     double? radius,
   }) {
+    final effectiveState = clearState ? null : (state ?? this.state);
+    final stateChanged = effectiveState != this.state;
+
     return MapFilters(
       segment: clearSegment ? null : (segment ?? this.segment),
       product: clearProduct ? null : (product ?? this.product),
       type: clearType ? null : (type ?? this.type),
-      state: clearState ? null : (state ?? this.state),
-      city: (clearCity || clearState) ? null : (city ?? this.city),
+      state: effectiveState,
+      // Uma cidade só faz sentido dentro do estado a que pertence: se o
+      // estado mudou e nenhuma cidade nova foi informada, a cidade antiga
+      // é descartada em vez de ficar "presa" a um estado diferente.
+      city: clearCity ? null : (city ?? (stateChanged ? null : this.city)),
       cnae: clearCnae ? null : (cnae ?? this.cnae),
       radius: radius ?? this.radius,
     );
@@ -90,8 +95,8 @@ final mapFiltersProvider =
     NotifierProvider<MapFiltersNotifier, MapFilters>(MapFiltersNotifier.new);
 
 final filterOptionsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final service = CompanyService(Supabase.instance.client);
-  return await service.getFilterOptions();
+  final repository = ref.watch(companyRepositoryProvider);
+  return await repository.getFilterOptions();
 });
 
 final filteredCitiesProvider = Provider<List<String>>((ref) {

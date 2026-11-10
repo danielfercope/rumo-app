@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/company_model.dart';
-import '../../company/hubspot_service.dart';
+import '../../company/crm_service.dart';
 
 String formatCnpj(String cnpj) {
   final d = cnpj.replaceAll(RegExp(r'\D'), '');
@@ -33,9 +33,8 @@ class CompanyDetailsModal extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notesAsync = ref.watch(hubspotNotesProvider(company.cnpj ?? ''));
-    final contactsAsync =
-        ref.watch(hubspotContactsProvider(company.cnpj ?? ''));
+    final notesAsync = ref.watch(crmNotesProvider(company.cnpj ?? ''));
+    final contactsAsync = ref.watch(crmContactsProvider(company.cnpj ?? ''));
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,
@@ -178,7 +177,7 @@ class CompanyDetailsModal extends ConsumerWidget {
   }
 
   Widget _buildActivities(
-      BuildContext context, AsyncValue<List<HubSpotNote>> notesAsync) {
+      BuildContext context, AsyncValue<List<CrmNote>> notesAsync) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -221,7 +220,7 @@ class CompanyDetailsModal extends ConsumerWidget {
     );
   }
 
-  Widget _noteCard(HubSpotNote note) {
+  Widget _noteCard(CrmNote note) {
     final dateStr = _formatDate(note.timestamp);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -306,7 +305,7 @@ class CompanyDetailsModal extends ConsumerWidget {
     }
   }
 
-  Widget _buildCrmContacts(AsyncValue<List<HubSpotContact>> contactsAsync) {
+  Widget _buildCrmContacts(AsyncValue<List<CrmContact>> contactsAsync) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -358,7 +357,7 @@ class CompanyDetailsModal extends ConsumerWidget {
     );
   }
 
-  Widget _contactCard(HubSpotContact contact) {
+  Widget _contactCard(CrmContact contact) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -577,11 +576,11 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
     final nav = Navigator.of(context);
 
     try {
-      await ref.read(hubspotServiceProvider).addNoteToCompany(
+      await ref.read(crmServiceProvider).addNoteToCompany(
             cnpj: widget.company.cnpj ?? '',
             noteText: text,
           );
-      ref.invalidate(hubspotNotesProvider(widget.company.cnpj ?? ''));
+      ref.invalidate(crmNotesProvider(widget.company.cnpj ?? ''));
       if (mounted) {
         setState(() {
           _success = true;
@@ -606,7 +605,7 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       decoration: const BoxDecoration(
-        color: CupertinoColors.systemBackground,
+        color: CupertinoColors.black,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -622,7 +621,7 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                   width: 40,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: CupertinoColors.systemGrey4,
+                    color: CupertinoColors.systemGrey,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -633,7 +632,7 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: CupertinoColors.black),
+                    color: CupertinoColors.white),
               ),
               const SizedBox(height: 12),
               CupertinoTextField(
@@ -642,8 +641,11 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                 maxLines: 5,
                 minLines: 4,
                 padding: const EdgeInsets.all(12),
+                style: const TextStyle(color: CupertinoColors.white),
+                placeholderStyle:
+                    const TextStyle(color: CupertinoColors.systemGrey2),
                 decoration: BoxDecoration(
-                  color: CupertinoColors.systemGroupedBackground,
+                  color: CupertinoColors.darkBackgroundGray,
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
@@ -681,30 +683,26 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
                   children: [
                     Expanded(
                       child: CupertinoButton(
-                        color: CupertinoColors.systemGrey5,
+                        color: CupertinoColors.darkBackgroundGray,
                         borderRadius: BorderRadius.circular(12),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed:
                             _loading ? null : () => Navigator.pop(context),
                         child: const Text('Cancelar',
-                            style: TextStyle(color: CupertinoColors.black)),
+                            style: TextStyle(color: CupertinoColors.white)),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: CupertinoButton(
-                        color: CupertinoColors.activeBlue,
+                      child: CupertinoButton.filled(
                         borderRadius: BorderRadius.circular(12),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed: _loading ? null : _save,
                         child: _loading
-                            ? const CupertinoActivityIndicator(
-                                color: CupertinoColors.white)
+                            ? const CupertinoActivityIndicator()
                             : const Text(
                                 'Salvar',
-                                style: TextStyle(
-                                    color: CupertinoColors.white,
-                                    fontWeight: FontWeight.w600),
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                       ),
                     ),
@@ -762,13 +760,13 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
     final nav = Navigator.of(context);
 
     try {
-      await ref.read(hubspotServiceProvider).addContactToCompany(
+      await ref.read(crmServiceProvider).addContactToCompany(
             cnpj: widget.company.cnpj ?? '',
             nome: nome,
             telefone: telefone,
             email: email.isEmpty ? null : email,
           );
-      ref.invalidate(hubspotContactsProvider(widget.company.cnpj ?? ''));
+      ref.invalidate(crmContactsProvider(widget.company.cnpj ?? ''));
       if (mounted) {
         setState(() {
           _success = true;
@@ -797,8 +795,10 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
       placeholder: placeholder,
       keyboardType: keyboardType,
       padding: const EdgeInsets.all(12),
+      style: const TextStyle(color: CupertinoColors.white),
+      placeholderStyle: const TextStyle(color: CupertinoColors.systemGrey2),
       decoration: BoxDecoration(
-        color: CupertinoColors.systemGroupedBackground,
+        color: CupertinoColors.darkBackgroundGray,
         borderRadius: BorderRadius.circular(10),
       ),
     );
@@ -810,7 +810,7 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       decoration: const BoxDecoration(
-        color: CupertinoColors.systemBackground,
+        color: CupertinoColors.black,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -826,7 +826,7 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
                   width: 40,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: CupertinoColors.systemGrey4,
+                    color: CupertinoColors.systemGrey,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -837,7 +837,7 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: CupertinoColors.black),
+                    color: CupertinoColors.white),
               ),
               const SizedBox(height: 12),
               _field(_nomeController, 'Nome *'),
@@ -881,30 +881,26 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
                   children: [
                     Expanded(
                       child: CupertinoButton(
-                        color: CupertinoColors.systemGrey5,
+                        color: CupertinoColors.darkBackgroundGray,
                         borderRadius: BorderRadius.circular(12),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed:
                             _loading ? null : () => Navigator.pop(context),
                         child: const Text('Cancelar',
-                            style: TextStyle(color: CupertinoColors.black)),
+                            style: TextStyle(color: CupertinoColors.white)),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: CupertinoButton(
-                        color: CupertinoColors.activeBlue,
+                      child: CupertinoButton.filled(
                         borderRadius: BorderRadius.circular(12),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         onPressed: _loading ? null : _save,
                         child: _loading
-                            ? const CupertinoActivityIndicator(
-                                color: CupertinoColors.white)
+                            ? const CupertinoActivityIndicator()
                             : const Text(
                                 'Salvar',
-                                style: TextStyle(
-                                    color: CupertinoColors.white,
-                                    fontWeight: FontWeight.w600),
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                       ),
                     ),

@@ -8,6 +8,10 @@ class Company {
   final double? longitude;
   final bool? isClient;
 
+  /// Status na carteira da organização ativa: 'cliente' | 'lead' | 'perdido'.
+  /// Null = a organização ainda não conhece a empresa (candidata a pontuação).
+  final String? carteiraStatus;
+
   // Novos campos para o modal detalhado
   final String? cnpj;
   final String? cnaePrincipal;
@@ -36,6 +40,7 @@ class Company {
     this.latitude,
     this.longitude,
     this.isClient,
+    this.carteiraStatus,
     this.cnpj,
     this.cnaePrincipal,
     this.telefone,
@@ -69,6 +74,7 @@ class Company {
       latitude: parseCoordinate(json['latitude']),
       longitude: parseCoordinate(json['longitude']),
       isClient: json['cliente'] as bool?,
+      carteiraStatus: json['status_carteira'] as String?,
       cnpj: json['cnpj'] as String?,
       cnaePrincipal: json['cnae_principal'] as String?,
       telefone: json['telefone_principal'] as String?,
