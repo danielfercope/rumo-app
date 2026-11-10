@@ -48,8 +48,7 @@ void main() {
   });
 
   group('getContacts', () {
-    test('converte a resposta do backend em uma lista de CrmContact',
-        () async {
+    test('converte a resposta do backend em uma lista de CrmContact', () async {
       when(() => mockApiClient.backend('crm', any())).thenAnswer(
         (_) async => {
           'contacts': [

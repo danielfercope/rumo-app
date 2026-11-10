@@ -70,9 +70,8 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       registrationServiceProvider.overrideWithValue(service),
-      locationProvider.overrideWith((ref) => withLocation
-          ? Future.value(_pos())
-          : Completer<Position>().future),
+      locationProvider.overrideWith((ref) =>
+          withLocation ? Future.value(_pos()) : Completer<Position>().future),
       profileProvider.overrideWith((ref) async => const UserProfile(
             id: 'u1',
             email: 'u@x.com',
@@ -130,8 +129,10 @@ void main() {
   }
 
   Future<void> fillSelects(WidgetTester tester) async {
-    await pickFromSheet(tester,
-        'Para quem a procuração eletrônica está habilitada?', kProcuracoes.first);
+    await pickFromSheet(
+        tester,
+        'Para quem a procuração eletrônica está habilitada?',
+        kProcuracoes.first);
     await pickFromSheet(tester, 'Possui débitos?', 'Sim');
     await pickFromSheet(tester, 'Valor da dívida', kValoresDivida.first);
     await pickFromSheet(tester, 'Regime tributário', kRegimesTributarios.first);
@@ -174,8 +175,8 @@ void main() {
       await tester.enterText(
           find.byType(CupertinoTextField), '12.345.678/0001-99999999');
       await tester.pump();
-      final field = tester.widget<CupertinoTextField>(
-          find.byType(CupertinoTextField));
+      final field =
+          tester.widget<CupertinoTextField>(find.byType(CupertinoTextField));
       expect(field.controller!.text, '12345678000199');
     });
 
@@ -183,8 +184,7 @@ void main() {
         (tester) async {
       await pumpModal(tester, withLocation: false);
       await goToStep2(tester);
-      expect(find.textContaining('Localização não disponível'),
-          findsOneWidget);
+      expect(find.textContaining('Localização não disponível'), findsOneWidget);
     });
 
     testWidgets('bloqueia CNPJ já cadastrado', (tester) async {
@@ -280,8 +280,8 @@ void main() {
 
       verify(() => service.saveCompany(any(), -26.48, -49.07, 'ROOFTOP'))
           .called(1);
-      final form = verify(() => service.sendToWebhook(
-              any(), captureAny(), 'u@x.com', 'Usuária'))
+      final form = verify(() =>
+              service.sendToWebhook(any(), captureAny(), 'u@x.com', 'Usuária'))
           .captured
           .single as Map<String, dynamic>;
       expect(form['primeiro_nome'], 'Maria');
@@ -312,7 +312,8 @@ void main() {
 
       final debitos = find.descendant(
         of: find
-            .ancestor(of: find.text('Possui débitos?'), matching: find.byType(Column))
+            .ancestor(
+                of: find.text('Possui débitos?'), matching: find.byType(Column))
             .first,
         matching: find.byType(GestureDetector),
       );
@@ -349,7 +350,9 @@ void main() {
 
       final regime = find.descendant(
         of: find
-            .ancestor(of: find.text('Regime tributário'), matching: find.byType(Column))
+            .ancestor(
+                of: find.text('Regime tributário'),
+                matching: find.byType(Column))
             .first,
         matching: find.byType(GestureDetector),
       );

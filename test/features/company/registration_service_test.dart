@@ -25,8 +25,8 @@ void main() {
       final result = await service.cnpjExists('12345678000199');
 
       expect(result, isTrue);
-      final query = verify(() => mockApiClient.get('companies',
-              query: captureAny(named: 'query')))
+      final query = verify(() =>
+              mockApiClient.get('companies', query: captureAny(named: 'query')))
           .captured
           .single as Map;
       expect(query['cnpj'], 'eq.12345678000199');
@@ -52,10 +52,10 @@ void main() {
       final result = await service.fetchCompanyData('12345678000199');
 
       expect(result['razao'], 'Empresa Teste');
-      final captured = verify(() =>
-              mockApiClient.backend('company-lookup', captureAny()))
-          .captured
-          .single as Map;
+      final captured =
+          verify(() => mockApiClient.backend('company-lookup', captureAny()))
+              .captured
+              .single as Map;
       expect(captured['cnpj'], '12345678000199');
     });
   });

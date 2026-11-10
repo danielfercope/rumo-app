@@ -31,10 +31,9 @@ void main() {
 
     expect(group.id, 'g1');
     expect(group.inviteHash, 'abc');
-    final params =
-        verify(() => mockApiClient.rpc('create_group', captureAny()))
-            .captured
-            .single as Map;
+    final params = verify(() => mockApiClient.rpc('create_group', captureAny()))
+        .captured
+        .single as Map;
     expect(params['p_name'], 'Vendas');
   });
 
@@ -59,8 +58,7 @@ void main() {
 
   test('regenerateInvite chama regenerate_group_invite com p_group_id',
       () async {
-    when(() => mockApiClient.rpc('regenerate_group_invite', any()))
-        .thenAnswer(
+    when(() => mockApiClient.rpc('regenerate_group_invite', any())).thenAnswer(
       (_) async => {
         'id': 'g1',
         'name': 'Vendas',
@@ -73,10 +71,10 @@ void main() {
     final group = await service.regenerateInvite('g1');
 
     expect(group.inviteHash, 'novo-hash');
-    final params = verify(() =>
-            mockApiClient.rpc('regenerate_group_invite', captureAny()))
-        .captured
-        .single as Map;
+    final params =
+        verify(() => mockApiClient.rpc('regenerate_group_invite', captureAny()))
+            .captured
+            .single as Map;
     expect(params['p_group_id'], 'g1');
   });
 
@@ -203,9 +201,8 @@ void main() {
     expect(groups, hasLength(1));
     expect(groups.first.group.name, 'Vendas');
     final query = verify(() => mockApiClient.get('group_members',
-            query: captureAny(named: 'query')))
-        .captured
-        .single as Map<String, String>;
+            query: captureAny(named: 'query'))).captured.single
+        as Map<String, String>;
     expect(query['user_id'], 'eq.u1');
     expect(query['select'], isNot(contains('invite_hash')));
     expect(query['select'], contains('groups('));

@@ -34,8 +34,7 @@ class CompanyDetailsModal extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notesAsync = ref.watch(crmNotesProvider(company.cnpj ?? ''));
-    final contactsAsync =
-        ref.watch(crmContactsProvider(company.cnpj ?? ''));
+    final contactsAsync = ref.watch(crmContactsProvider(company.cnpj ?? ''));
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,

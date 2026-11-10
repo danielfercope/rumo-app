@@ -43,8 +43,7 @@ class GroupService {
     return data as String;
   }
 
-  Future<void> setMemberRole(
-          String groupId, String userId, String role) =>
+  Future<void> setMemberRole(String groupId, String userId, String role) =>
       _apiClient.rpc('set_member_role', {
         'p_group_id': groupId,
         'p_user_id': userId,
@@ -60,16 +59,16 @@ class GroupService {
   }
 
   Future<List<GroupMember>> listMembers(String groupId) async {
-    final data = await _apiClient
-        .rpc('list_group_members', {'p_group_id': groupId});
+    final data =
+        await _apiClient.rpc('list_group_members', {'p_group_id': groupId});
     return (data as List)
         .map((e) => GroupMember.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<List<TrackingPoint>> listTracking(String groupId) async {
-    final data = await _apiClient
-        .rpc('list_group_tracking', {'p_group_id': groupId});
+    final data =
+        await _apiClient.rpc('list_group_tracking', {'p_group_id': groupId});
     return (data as List)
         .map((e) => TrackingPoint.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -82,7 +81,8 @@ class GroupService {
   Future<List<MyGroup>> listMyGroups(String userId) async {
     final data = await _apiClient.get('group_members', query: {
       'user_id': 'eq.$userId',
-      'select': 'role,joined_at,groups(id,name,tracking_enabled,created_by,created_at)',
+      'select':
+          'role,joined_at,groups(id,name,tracking_enabled,created_by,created_at)',
     });
     return (data as List)
         .map((e) => MyGroup.fromJson(e as Map<String, dynamic>))

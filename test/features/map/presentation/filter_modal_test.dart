@@ -35,7 +35,8 @@ void main() {
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
-      child: const CupertinoApp(home: CupertinoPageScaffold(child: FilterModal())),
+      child:
+          const CupertinoApp(home: CupertinoPageScaffold(child: FilterModal())),
     ));
     await tester.pumpAndSettle();
   }
@@ -84,7 +85,9 @@ void main() {
     await tester.tap(find.text('Cliente'));
     await tester.pumpAndSettle();
 
-    tester.widget<CupertinoSlider>(find.byType(CupertinoSlider)).onChanged!(500);
+    tester
+        .widget<CupertinoSlider>(find.byType(CupertinoSlider))
+        .onChanged!(500);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Aplicar'));
@@ -98,8 +101,7 @@ void main() {
     expect(f.radius, 500);
   });
 
-  testWidgets('escolher estado restringe as cidades ao estado',
-      (tester) async {
+  testWidgets('escolher estado restringe as cidades ao estado', (tester) async {
     await pumpModal(tester);
 
     await pick(tester, 'Estado (UF)', 'SC');
@@ -146,7 +148,8 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
-      child: const CupertinoApp(home: CupertinoPageScaffold(child: FilterModal())),
+      child:
+          const CupertinoApp(home: CupertinoPageScaffold(child: FilterModal())),
     ));
     await tester.pumpAndSettle();
     expect(find.text('Varejo'), findsOneWidget);

@@ -37,7 +37,8 @@ class MyGroup {
   final String role;
   final DateTime joinedAt;
 
-  const MyGroup({required this.group, required this.role, required this.joinedAt});
+  const MyGroup(
+      {required this.group, required this.role, required this.joinedAt});
 
   bool get isAdmin => role == 'admin';
 

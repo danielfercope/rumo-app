@@ -64,8 +64,10 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
-    final upsert = verify(() => api.upsert('tracking_equipe', captureAny(),
-        onConflict: 'user_id')).captured.single as Map<String, dynamic>;
+    final upsert = verify(() =>
+            api.upsert('tracking_equipe', captureAny(), onConflict: 'user_id'))
+        .captured
+        .single as Map<String, dynamic>;
     expect(upsert['user_id'], 'uid-1');
     expect(upsert['nome'], 'Ana');
     expect(upsert['latitude'], -26.5);

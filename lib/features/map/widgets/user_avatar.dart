@@ -24,6 +24,7 @@ class UserAvatar extends StatelessWidget {
   });
 
   final String initials;
+
   /// Bytes da foto (ver `userPhotoProvider`); sem eles, as iniciais.
   final Uint8List? photo;
   final double size;
