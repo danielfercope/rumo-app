@@ -355,7 +355,7 @@ aws cloudformation deploy --template-file infra/aws/backend-stack.yaml \
 make deploy INSTANCE_ID=<instance-id>
 ```
 
-O UserData clona a branch `dev` do repositório (público) no boot, busca os segredos no
+O UserData clona a branch `main` do repositório (público) no boot (parâmetro `RepoBranch`), busca os segredos no
 Secrets Manager e sobe a stack com `docker-compose.backend.yml` + `docker-compose.prod.yml`
 (override que publica só 80/443 via Caddy — as portas internas de banco/PostgREST/backend
 não ficam expostas). TLS automático via Let's Encrypt, usando um subdomínio DuckDNS
@@ -365,8 +365,11 @@ gratuito (`rumo-app.duckdns.org` por padrão — parâmetro `DomainName` do temp
 > padrão do seu AWS CLI. O `Makefile` já passa `--region $(AWS_REGION)` (padrão `us-east-1`);
 > em comandos `aws` manuais, passe `--region us-east-1`.
 >
-> **A EC2 acompanha a branch `dev`**: o `make deploy` faz `git pull` lá. Mudanças de
-> infra/compose só chegam à produção depois de mergeadas na `dev`.
+> **A EC2 acompanha a branch `main`**: o `make deploy` faz `git fetch` + `git checkout -B main`
+> lá (`BRANCH=<outra>` troca a branch; serve também pra migrar uma instância que ainda esteja
+> noutra). Mudanças de infra/compose só chegam à produção depois de mergeadas na `main`.
+> O parâmetro `RepoBranch` só vale no boot de uma instância nova: trocá-lo numa stack existente
+> não move a instância já criada (e mexer no UserData derruba a EC2) — use o `make deploy`.
 >
 > **Migrações**: `db/schema/*.sql` só são aplicadas automaticamente em banco **vazio**
 > (`docker-entrypoint-initdb.d`). Um arquivo novo (ex.: `008_crm_sync.sql`) precisa ser
@@ -406,8 +409,22 @@ Pré-requisitos do build (todos fora do git): `.env`; `web/env.js` (chave do Map
 (`GOOGLE_MAPS_API_KEY`, ver `android/secrets.properties.example` — sem ele o mapa do APK fica
 em branco). O script é `infra/scripts/deploy_frontend.sh`.
 
-Ordem pra subir uma versão: **merge na `dev`** → `make deploy` (atualiza o Caddy/backend na EC2) →
+Ordem pra subir uma versão: **merge na `main`** (PR `dev` → `main`) → `make deploy` (atualiza o Caddy/backend na EC2) →
 `make deploy-web` e/ou `make deploy-apk`.
+
+**Carteira por organização em produção** (`infra/scripts/enable_carteira_sync.sh`, `INSTANCE_ID=<id>`;
+`DRY_RUN=1` só mostra o que seria feito). Ordem, porque o app novo chama o schema novo:
+
+1. `migrate` — aplica `db/schema/008`–`014` (idempotentes; a 008 cria o papel `crm_sync` que as demais usam).
+2. `make deploy` — reconstrói a imagem do Backend (agora com numpy) na `main`.
+3. `config` — garante no Secrets Manager `CRM_TOKEN_ENCRYPTION_KEY` (gerada **uma vez**, nunca
+   sobrescrita: perdê-la obriga todas as organizações a reconectar o CRM — faça backup do segredo) e
+   `GEOCODING_API_KEY` (chave de servidor; informe via variável de ambiente só se o segredo ainda não a tem).
+   O job continua desligado.
+4. `enable` — liga `CRM_CONNECTIONS_SYNC_ENABLED` (confere antes que a imagem tem numpy/cryptography).
+5. `make deploy-web` / `make deploy-apk` — publica o app com a aba de prioridades.
+
+`status` mostra conexões, carteira e prioridade (só leitura).
 
 Configuração manual fora do código: Firebase > Authentication > *Authorized domains* precisa
 incluir `rumo-app.duckdns.org` (senão o login com Google no site falha); pro login com Google no

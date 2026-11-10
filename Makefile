@@ -34,11 +34,13 @@ token: ## Gera um JWT de teste: make token UID=algum-uid
 data: ## Popula o banco local com empresas fictícias num raio de 10km de Jaraguá do Sul/SC: make data [COUNT=40]
 	@python3 db/seed/seed_companies.py --count $(COUNT) | $(COMPOSE) exec -T db psql -U postgres -d rumo
 
-deploy: ## Redeploy manual em produção via SSM (requer AWS CLI configurado + INSTANCE_ID): make deploy INSTANCE_ID=i-xxxx
+BRANCH ?= main
+
+deploy: ## Redeploy manual em produção via SSM (AWS CLI + INSTANCE_ID); acompanha a main: make deploy INSTANCE_ID=i-xxxx [BRANCH=main]
 	aws ssm send-command --region $(AWS_REGION) \
 		--instance-ids $(INSTANCE_ID) \
 		--document-name "AWS-RunShellScript" \
-		--parameters 'commands=["cd /opt/rumo-app && git pull && docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml --env-file infra/.env up -d --build"]'
+		--parameters 'commands=["cd /opt/rumo-app && git fetch --depth 1 origin $(BRANCH) && git checkout -B $(BRANCH) FETCH_HEAD && docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml --env-file infra/.env up -d --build"]'
 
 deploy-web: ## Build do Flutter Web + publica em produção: make deploy-web INSTANCE_ID=i-xxxx ARTIFACTS_BUCKET=bucket
 	AWS_REGION=$(AWS_REGION) infra/scripts/deploy_frontend.sh web

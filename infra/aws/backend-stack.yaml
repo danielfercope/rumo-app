@@ -19,8 +19,8 @@ Parameters:
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
   RepoBranch:
     Type: String
-    Default: dev
-    Description: Branch do GitHub a ser clonada no boot (repo publico, sem credencial)
+    Default: main
+    Description: Branch do GitHub a ser clonada no boot (repo publico, sem credencial). Producao acompanha a main
   DomainName:
     Type: String
     Default: rumo-app.duckdns.org
