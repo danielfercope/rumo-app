@@ -79,6 +79,10 @@ lib/
     │       ├── crm_connection_section.dart # status + ações, dentro de GroupManagementView
     │       └── crm_connection_wizard.dart  # token → campos → prévia → conectar
     │
+    ├── groups/presentation/
+    │   ├── organization_gate.dart     # porta de entrada: só quem tem organização vê as abas
+    │   └── organization_onboarding_page.dart # sem organização: criar uma (+ CRM) ou entrar com o código
+    │
     ├── leads/                         # Busca textual de leads + visão "Prioridades" (segmento no topo)
     │   ├── leads_page.dart
     │   └── leads_search_provider.dart # leadsSearchQueryProvider + leadsResultsProvider
@@ -87,8 +91,8 @@ lib/
         ├── add_company_modal.dart     # Multi-step modal (3 passos)
         ├── crm_service.dart           # Integração com o CRM via ApiClient (nome
         │                              # agnóstico de fornecedor — hoje é o HubSpot)
-        ├── registration_service.dart  # Consulta de CNPJ (via ApiClient) +
-        │                              # geocoding + upsert em `companies` via ApiClient
+        ├── registration_service.dart  # Consulta de CNPJ (via ApiClient) + geocoding +
+        │                              # RPC register_company (carteira da organização ativa)
         └── constants.dart             # Dropdowns: departamentos, setores, regimes, etc.
 ```
 
@@ -210,16 +214,16 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 
 | Tabela | Uso |
 |---|---|
-| `companies` | Identidade + geolocalização das empresas (busca/radar) |
-| `company_financial_profile` | Dados de crédito/score, 1:1 com `companies` (consulta só no detalhe) |
-| `company_contacts` | Telefones/e-mails/redes sociais secundários, 1:N |
-| `company_crm_sync` | Status de sincronização com o HubSpot |
+| `companies` | Catálogo global de dados públicos das empresas (CNPJ, endereço, CNAE, geolocalização). **O acesso é sempre pela carteira de uma organização** — ver [Isolamento entre organizações](#isolamento-entre-organizações) |
+| `company_financial_profile` | Dados de crédito/score, 1:1 com `companies` (consulta só no detalhe); mesma regra de visibilidade |
+| `company_contacts` | Telefones/e-mails/redes sociais secundários, 1:N; mesma regra de visibilidade |
+| `company_crm_sync` | Status de sincronização com o HubSpot; mesma regra de visibilidade |
 | `profiles` | Perfis de usuário (`id` = UID do Firebase; nome, departamento, nivel_acesso) |
 | `tracking_equipe` | Posição atual de cada usuário (upsert por `user_id`) |
 | `tracking_history` | Histórico de localizações (append-only) |
 | `crm_sync_state` | Marca d'água da sincronização CRM → banco (maior ID de empresa do CRM já processado) |
 | `crm_sync_pending` | Empresas do CRM que falharam no ETL e aguardam nova tentativa (com backoff) |
-| `carteira_empresas` | Relação de uma organização (`groups`) com cada empresa: `status` cliente/lead/perdido (`009_carteira.sql`). `companies` segue global; empresa sem linha aqui é candidata a ser pontuada |
+| `carteira_empresas` | Relação de uma organização (`groups`) com cada empresa: `status` cliente/lead/perdido, `origem` crm/manual (`009_carteira.sql`). **É o que dá visibilidade**: empresa sem linha aqui é invisível pra todo usuário |
 | `crm_conexoes` | Conexão da organização com o CRM: token cifrado (nunca legível por `web_user`) + mapeamento de campos |
 | `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status (o incremental só deixa log se houve novidade ou erro) |
 | `carteira_pendencias` | Fila de retentativas (com backoff) da sincronização por conexão — análoga à `crm_sync_pending`, mas com a conexão na chave (`011_carteira_pendencias.sql`) |
@@ -228,11 +232,25 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 
 | Função | Parâmetros | Retorno |
 |---|---|---|
-| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit, group_id | `List<Company>` — unifica busca por raio, texto e filtros num único endpoint. Com `group_id` (organização ativa), `cliente` e `status_carteira` vêm da `carteira_empresas` daquela organização (exige ser membro); sem ele, usa o flag global `companies.is_client` |
-| `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` |
+| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit, **group_id (obrigatório)** | `List<Company>` — unifica busca por raio, texto e filtros. Só devolve a **carteira da organização** `group_id` (exige ser membro); `cliente` e `status_carteira` vêm dela. Sem `group_id` ou sem ser membro: erro |
+| `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` — roda com as permissões de quem chama, então só vê opções das empresas das próprias organizações |
+| `register_company` | group_id, data (jsonb) | Cadastro manual: cria a empresa no catálogo (sem sobrescrever uma que já exista) e a põe na carteira da organização como `lead`/`manual`. Exige membro + (admin da organização ou `can_add_company()`). Devolve `{company_id, already_in_portfolio}` — nunca revela se a empresa já existia |
+| `portfolio_has_cnpj` | group_id, cnpj | `boolean` — o CNPJ está na carteira DESSA organização? (Não dá pra descobrir se existe em outra) |
 | `ensure_profile` | nome, departamento | Cria/retorna o `profile` do usuário autenticado |
 
-O cadastro de uma nova empresa (`RegistrationService.saveCompany`) grava direto em `companies` via `ApiClient.upsert` (permitido por RLS para quem pode cadastrar — ver `can_add_company()`). O enriquecimento de dados de CNPJ e a integração com o CRM passam pelo backend Python — ver seção abaixo.
+O app **não grava mais direto** em `companies` nem nas tabelas satélite: o cadastro de uma empresa (`RegistrationService.saveCompany`) chama `register_company`. O enriquecimento de dados de CNPJ e a integração com o CRM passam pelo backend Python — ver seção abaixo.
+
+### Isolamento entre organizações
+
+A base de clientes é **da organização**: só quem é membro dela vê o que ela possui, e quem não pertence a nenhuma organização não vê nada (sem mapa, busca, leads). É imposto em três camadas, e a que vale é a do servidor:
+
+1. **Banco** (`015_isolamento_organizacao.sql`): `companies`, `company_financial_profile`, `company_contacts` e `company_crm_sync` só são legíveis se `company_in_my_orgs(company_id)` — a empresa está na carteira de uma organização de que o usuário é membro. `web_user` não tem INSERT/UPDATE/DELETE nelas (escrita só pelas RPCs acima e pelo papel `crm_sync` do Backend, que enxerga tudo pra sincronizar).
+2. **Backend**: `/company-lookup` exige pertencer a alguma organização; `/crm` exige `group_id`, ser membro, o CNPJ estar na carteira dessa organização e a organização ser a dona do CRM global (`CRM_LEGACY_GROUP_ID`) — as demais ainda não têm notas/contatos (`AccessService`). O webhook de cadastro (`URL_WEBHOOK_CRM`) só recebe cadastros da organização `WEBHOOK_CRM_GROUP_ID` (build do app); vazio = ninguém.
+3. **App**: `OrganizationGate` só mostra as abas pra quem tem organização; sem ela, a tela de boas-vindas oferece **criar uma organização** (e abre o assistente de conexão do CRM em seguida) ou **entrar com o código de convite**. As buscas nem chamam o servidor sem organização ativa.
+
+Testes: `make test-db` (`db/tests/isolation_test.sql`, num Postgres descartável: vários usuários e organizações) + os testes do backend e do app. **Mexeu em RLS, RPC de busca ou nas rotas do Backend? Rode `make test-db`.**
+
+Base antiga sem dono (importada pelo sync de conta única ou cadastrada antes das organizações) fica invisível até ser associada: `db/ops/assign_legacy_companies.sql` (`infra/scripts/isolate_organizations.sh legacy <uuid>`).
 
 ---
 
@@ -426,6 +444,15 @@ Ordem pra subir uma versão: **merge na `main`** (PR `dev` → `main`) → `make
 
 `status` mostra conexões, carteira e prioridade (só leitura).
 
+**Isolamento entre organizações em produção** (`infra/scripts/isolate_organizations.sh`, `INSTANCE_ID=<id>`; `DRY_RUN=1` só mostra os comandos). Atenção: **o app antigo deixa de funcionar** assim que a `015` entra (a busca passa a exigir organização), então publique o app novo logo em seguida. Ordem:
+
+1. `make deploy` — backend novo (`/crm` e `/company-lookup` passam a exigir organização).
+2. `migrate` — leva a EC2 pra `main` e aplica a `015`.
+3. `legacy <uuid-da-organização>` — associa a base atual (sem dono) a essa organização; antes, `COUNT_ONLY=1` mostra quantas empresas são. **Sem este passo, as empresas atuais ficam invisíveis pra todos** (nada é apagado).
+4. `config <uuid-da-organização>` — grava `CRM_LEGACY_GROUP_ID` (a organização dona do CRM global) e **desliga o sync antigo de conta única** (`CRM_SYNC_ENABLED=false`, que importaria empresas sem organização).
+5. `verify` — só leitura: simula um usuário sem organização e confere que ele vê 0 empresas e que a busca é recusada.
+6. `make deploy-web` / `make deploy-apk` — se a organização do passo 3 deve continuar enviando cadastros ao webhook de CRM, ponha `WEBHOOK_CRM_GROUP_ID=<uuid>` no `.env` do build (sem isso o webhook fica desligado).
+
 Configuração manual fora do código: Firebase > Authentication > *Authorized domains* precisa
 incluir `rumo-app.duckdns.org` (senão o login com Google no site falha); pro login com Google no
 APK, o SHA-1 do keystore precisa estar cadastrado no app Android do Firebase (e o
@@ -459,7 +486,7 @@ RadarPage
 
 ### Permissões de cadastro
 
-`UserProfile.canAddCompany` retorna `true` se:
+Só cadastra quem é membro da organização ativa **e** é admin dela ou tem `UserProfile.canAddCompany` (`register_company` confere no banco). `canAddCompany` é `true` se:
 - `departamento` ∈ `{Pré-vendas, Gestão, Administração Interna}`
 - OU `nivelAcesso == 'admin'`
 
@@ -541,6 +568,7 @@ make db-up                 # sobe db + postgrest + backend + caddy
 make db-down                # derruba os containers, mantém os dados
 make db-reset                # apaga os volumes e reaplica o schema do zero
 make migrate                 # reaplica db/schema/*.sql manualmente
+make test-db                 # testa o isolamento entre organizações num Postgres descartável
 make token UID=algum-uid      # gera um JWT de teste
 make data [COUNT=40]           # popula empresas fictícias pra testar o radar
 ```
