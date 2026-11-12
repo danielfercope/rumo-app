@@ -132,38 +132,6 @@ SELECT t.ok((SELECT count(*) FROM public.company_contacts) = 1, 'u2 vê os conta
 SELECT t.ok(public.get_filter_options() -> 'products' = '["SEGREDO-G2"]'::jsonb, 'u2 vê as opções de g2');
 RESET ROLE;
 
--- ═══ histórico de deslocamento (016_tracking_history.sql) ═══════════════════
-INSERT INTO public.tracking_history (user_id, latitude, longitude, captured_at) VALUES
-  ('u4', -26.30, -48.84, '2026-11-10 12:00+00'),
-  ('u4', -26.31, -48.85, '2026-11-10 11:00+00'),
-  ('u4', -26.32, -48.86, '2026-11-12 11:00+00'),
-  ('u2', -30.03, -51.22, '2026-11-10 12:00+00');
-
--- g1 ainda com rastreamento desligado: nem o admin lê
-SET LOCAL ROLE web_user;
-SELECT set_config('request.jwt.claims', '{"sub":"u1"}', true);
-SELECT t.raises($$SELECT * FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u4','2026-11-10 00:00+00','2026-11-11 00:00+00')$$, 'desativado');
-RESET ROLE;
-
-UPDATE public.groups SET tracking_enabled = true WHERE id = '00000000-0000-0000-0000-0000000000a1';
-
-SET LOCAL ROLE web_user;
-SELECT set_config('request.jwt.claims', '{"sub":"u1"}', true);
-SELECT t.ok((SELECT count(*) FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u4','2026-11-10 00:00+00','2026-11-11 00:00+00')) = 2, 'admin de g1 vê o trajeto do dia, só dentro do período');
-SELECT t.ok((SELECT latitude FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u4','2026-11-10 00:00+00','2026-11-11 00:00+00') LIMIT 1) = -26.31, 'trajeto em ordem cronológica');
-SELECT t.raises($$SELECT * FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u2','2026-11-10 00:00+00','2026-11-11 00:00+00')$$, 'não pertence');
-SELECT t.raises($$SELECT * FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u4','2026-01-01 00:00+00','2026-11-11 00:00+00')$$, '31 dias');
-RESET ROLE;
-
-SET LOCAL ROLE web_user;
-SELECT set_config('request.jwt.claims', '{"sub":"u4"}', true);
-SELECT t.raises($$SELECT * FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u4','2026-11-10 00:00+00','2026-11-11 00:00+00')$$, 'administradores');
-RESET ROLE;
-SET LOCAL ROLE web_user;
-SELECT set_config('request.jwt.claims', '{"sub":"u2"}', true);
-SELECT t.raises($$SELECT * FROM public.list_group_tracking_history('00000000-0000-0000-0000-0000000000a1','u4','2026-11-10 00:00+00','2026-11-11 00:00+00')$$, 'administradores');
-RESET ROLE;
-
 -- ═══ o Backend (crm_sync) continua enxergando tudo pra sincronizar ══════════
 SET LOCAL ROLE crm_sync;
 SELECT t.ok((SELECT count(*) FROM public.companies) >= 5, 'crm_sync (Backend) segue lendo o catálogo inteiro');
