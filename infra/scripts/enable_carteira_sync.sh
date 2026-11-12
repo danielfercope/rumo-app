@@ -2,14 +2,16 @@
 # Liga a carteira por organizacao (CRM por organizacao + prioridade dos leads)
 # em producao, em etapas separadas.
 #
-#   enable_carteira_sync.sh migrate  aplica db/schema/008..014 no banco de producao
+#   enable_carteira_sync.sh migrate  leva o repositorio da EC2 para a BRANCH (padrao main) e aplica
+#                                    db/schema/007..014 no banco de producao
 #   enable_carteira_sync.sh config   garante no Secrets Manager a chave de cifra dos tokens
 #                                    (CRM_TOKEN_ENCRYPTION_KEY, gerada UMA vez) e a
 #                                    GEOCODING_API_KEY, com o job ainda DESLIGADO
 #   enable_carteira_sync.sh enable   liga o job (CRM_CONNECTIONS_SYNC_ENABLED=true)
 #   enable_carteira_sync.sh status   conexoes, carteira, prioridade e logs (so leitura)
 #
-# Ordem: migrate -> `make deploy` (reconstroi a imagem do Backend, que agora usa numpy)
+# Ordem: migrate (ja atualiza o codigo da EC2 pra main: as migracoes sao lidas de la)
+#        -> `make deploy` (reconstroi a imagem do Backend, que agora usa numpy)
 #        -> config -> enable -> deploy-web/deploy-apk (o app novo chama o schema novo).
 #
 # Variaveis: INSTANCE_ID (obrigatoria); AWS_REGION (padrao us-east-1);
@@ -25,17 +27,23 @@
 # cria quando ela nao existe e nunca a sobrescreve.
 
 set -euo pipefail
+# O AWS CLI abre um pager (less) em saidas longas e o script ficaria parado esperando tecla.
+export AWS_PAGER=""
 
 step="${1:-}"
 : "${INSTANCE_ID:?defina INSTANCE_ID (ex.: i-0123...)}"
 region="${AWS_REGION:-us-east-1}"
+branch="${BRANCH:-main}"
 secret_id="rumo-app/backend-env"
 compose="docker compose -f docker-compose.backend.yml -f docker-compose.prod.yml --env-file infra/.env"
 psql="$compose exec -T db psql -U postgres -d rumo"
 
-# Migracoes da carteira, na ordem. A 008 cria o papel crm_sync que as demais usam.
+# Migracoes, na ordem. O banco de producao so aplica db/schema/ sozinho no primeiro
+# boot, entao ele fica na versao da branch da epoca (001-006): a carteira precisa
+# tambem da 007 (grupos/organizacoes). A 008 cria o papel crm_sync que as demais usam.
 # Todas sao idempotentes (IF NOT EXISTS / OR REPLACE), entao reaplicar e seguro.
 migrations=(
+  007_groups.sql
   008_crm_sync.sql
   009_carteira.sql
   010_search_companies_carteira.sql
@@ -107,8 +115,12 @@ case "$step" in
     cmds=(
       "set -e"
       "cd /opt/rumo-app"
-      # as migracoes da carteira referenciam groups/group_members (007)
-      "$psql -tAc \"select case when to_regclass('public.groups') is null then 1/0 else 0 end\" > /dev/null"
+      # as migracoes sao lidas do repositorio da EC2: leva ele pra branch certa primeiro
+      "git fetch --depth 1 origin $branch && git checkout -B $branch FETCH_HEAD"
+      "for f in ${migrations[*]}; do test -f db/schema/\$f || { echo \"ERRO: db/schema/\$f nao existe em $branch\"; exit 1; }; done"
+      # pre-requisito: o schema base (001-006), que a 007 em diante referencia.
+      # (Nao usar CASE ... 1/0: o PostgreSQL avalia a constante no planejamento e falha sempre.)
+      "[ \"\$($psql -tAc \"select count(*) from pg_tables where schemaname='public' and tablename in ('profiles','companies')\")\" = 2 ] || { echo 'ERRO: faltam profiles/companies (migracoes 001-006). Abortado, nada aplicado.'; exit 1; }"
     )
     for f in "${migrations[@]}"; do
       cmds+=("echo 'aplicando $f'" "$psql -v ON_ERROR_STOP=1 < db/schema/$f")
