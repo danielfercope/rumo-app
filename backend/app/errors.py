@@ -53,3 +53,13 @@ class UpstreamIntegrationError(Exception):
 
 class GeocodingNotFoundError(Exception):
     """O provedor de geocodificação não achou coordenadas pro endereço."""
+
+
+class CompanyNotInPortfolioError(Exception):
+    """O CNPJ não está na carteira da organização. É a mesma resposta pra
+    "não existe" e "existe só em outra organização": não revela qual das duas."""
+
+
+class CrmNotAvailableError(Exception):
+    """As notas e contatos do CRM usam a conta global do RUMO, que só atende a
+    organização dona dela (CRM_LEGACY_GROUP_ID). As demais ainda não têm esse recurso."""

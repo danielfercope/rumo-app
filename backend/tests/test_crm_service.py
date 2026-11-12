@@ -30,7 +30,7 @@ async def test_get_notes_with_owners_sem_empresa_encontrada(service):
     _mock_company_search(found=False)
 
     result = await service.get_notes_with_owners(
-        CrmRequest(action="getNotesWithOwners", cnpj=CNPJ)
+        CrmRequest(group_id="g1", action="getNotesWithOwners", cnpj=CNPJ)
     )
 
     assert result == {"notes": []}
@@ -66,7 +66,7 @@ async def test_get_notes_with_owners_resolve_nome_do_owner(service):
     )
 
     result = await service.get_notes_with_owners(
-        CrmRequest(action="getNotesWithOwners", cnpj=CNPJ)
+        CrmRequest(group_id="g1", action="getNotesWithOwners", cnpj=CNPJ)
     )
 
     assert result["notes"] == [
@@ -106,7 +106,7 @@ async def test_get_notes_with_owners_aceita_timestamp_iso_do_hubspot(service):
     )
 
     result = await service.get_notes_with_owners(
-        CrmRequest(action="getNotesWithOwners", cnpj=CNPJ)
+        CrmRequest(group_id="g1", action="getNotesWithOwners", cnpj=CNPJ)
     )
 
     assert result["notes"] == [
@@ -144,7 +144,7 @@ async def test_get_contacts_concatena_nome(service):
         )
     )
 
-    result = await service.get_contacts(CrmRequest(action="getContacts", cnpj=CNPJ))
+    result = await service.get_contacts(CrmRequest(group_id="g1", action="getContacts", cnpj=CNPJ))
 
     assert result["contacts"] == [
         {
@@ -163,6 +163,7 @@ async def test_add_contact_sem_empresa_encontrada_lanca_erro(service):
     with pytest.raises(CrmCompanyNotFoundError):
         await service.add_contact(
             CrmRequest(
+                group_id="g1",
                 action="addContact", cnpj=CNPJ, nome="João Pedro", telefone="123"
             )
         )
@@ -179,7 +180,7 @@ async def test_add_contact_cria_e_associa(service):
     ).mock(return_value=httpx.Response(204))
 
     await service.add_contact(
-        CrmRequest(action="addContact", cnpj=CNPJ, nome="João Pedro", telefone="123")
+        CrmRequest(group_id="g1", action="addContact", cnpj=CNPJ, nome="João Pedro", telefone="123")
     )
 
     assert create_route.calls.last.request.content
@@ -197,7 +198,7 @@ async def test_add_note_cria_e_associa(service):
     ).mock(return_value=httpx.Response(204))
 
     await service.add_note(
-        CrmRequest(action="addNote", cnpj=CNPJ, noteText="Cliente interessado")
+        CrmRequest(group_id="g1", action="addNote", cnpj=CNPJ, noteText="Cliente interessado")
     )
 
     assert create_route.called

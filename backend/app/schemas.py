@@ -4,6 +4,9 @@ from pydantic import BaseModel, Field
 
 
 class CrmRequest(BaseModel):
+    # Organização em nome da qual se consulta: o Backend confere que quem chama
+    # é membro e que o CNPJ está na carteira dela.
+    group_id: str
     action: Literal["getNotesWithOwners", "getContacts", "addContact", "addNote"]
     cnpj: str
     nome: str | None = None
