@@ -9,6 +9,9 @@ import 'package:rumo_app/features/auth/providers/profile_provider.dart';
 import 'package:rumo_app/features/company/add_company_modal.dart';
 import 'package:rumo_app/features/company/constants.dart';
 import 'package:rumo_app/features/company/registration_service.dart';
+import 'package:rumo_app/features/groups/models/group_member_model.dart';
+import 'package:rumo_app/features/groups/models/group_model.dart';
+import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/map/providers/location_provider.dart';
 
 class MockRegistrationService extends Mock implements RegistrationService {}
@@ -42,27 +45,41 @@ const _dadosApi = <String, dynamic>{
   '0': {'socios_nome': 'Maria Souza Lima'},
 };
 
+final _grupo = MyGroup(
+  group: Group(
+    id: 'g1',
+    name: 'Agro Sul',
+    trackingEnabled: false,
+    createdBy: 'u1',
+    createdAt: DateTime(2026, 1, 1),
+  ),
+  role: 'admin',
+  joinedAt: DateTime(2026, 1, 1),
+);
+
 void main() {
   late MockRegistrationService service;
 
   setUp(() {
     service = MockRegistrationService();
-    when(() => service.cnpjExists(any())).thenAnswer((_) async => false);
+    when(() => service.cnpjInPortfolio(any(), any()))
+        .thenAnswer((_) async => false);
+    when(() => service.webhookEnabledFor(any())).thenReturn(true);
     when(() => service.fetchCompanyData(any()))
         .thenAnswer((_) async => Map<String, dynamic>.from(_dadosApi));
     when(() => service.geocodeAddress(any())).thenAnswer(
         (_) async => (lat: -26.48, lon: -49.07, precisao: 'ROOFTOP'));
     when(() => service.isWithinProximity(any(), any(), any(), any()))
         .thenReturn(true);
-    when(() => service.saveCompany(any(), any(), any(), any()))
-        .thenAnswer((_) async {});
+    when(() => service.saveCompany(any(), any(), any(), any(), any()))
+        .thenAnswer((_) async => false);
     when(() => service.sendToWebhook(any(), any(), any(), any()))
         .thenAnswer((_) async => true);
   });
 
   /// Abre o modal dentro de uma rota, pra conseguir observar o `pop(true)`.
   Future<List<Object?>> pumpModal(WidgetTester tester,
-      {bool withLocation = true}) async {
+      {bool withLocation = true, bool withGroup = true}) async {
     tester.view.physicalSize = const Size(2400, 4000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -70,6 +87,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       registrationServiceProvider.overrideWithValue(service),
+      activeGroupProvider.overrideWithValue(withGroup ? _grupo : null),
       locationProvider.overrideWith((ref) =>
           withLocation ? Future.value(_pos()) : Completer<Position>().future),
       profileProvider.overrideWith((ref) async => const UserProfile(
@@ -188,10 +206,13 @@ void main() {
     });
 
     testWidgets('bloqueia CNPJ já cadastrado', (tester) async {
-      when(() => service.cnpjExists(any())).thenAnswer((_) async => true);
+      when(() => service.cnpjInPortfolio(any(), any()))
+          .thenAnswer((_) async => true);
       await pumpModal(tester);
       await goToStep2(tester);
-      expect(find.text('Esta empresa já está cadastrada.'), findsOneWidget);
+      verify(() => service.cnpjInPortfolio('g1', '12345678000199')).called(1);
+      expect(find.text('Esta empresa já está na carteira da sua organização.'),
+          findsOneWidget);
       expect(find.text('Nova Empresa'), findsOneWidget);
     });
 
@@ -264,7 +285,7 @@ void main() {
 
       expect(find.textContaining('Preencha:'), findsOneWidget);
       expect(find.textContaining('Procuração'), findsOneWidget);
-      verifyNever(() => service.saveCompany(any(), any(), any(), any()));
+      verifyNever(() => service.saveCompany(any(), any(), any(), any(), any()));
     });
 
     testWidgets('preenchimento completo salva, envia ao CRM e fecha com true',
@@ -278,7 +299,7 @@ void main() {
       await tester.tap(find.text('Salvar e Enviar para CRM'));
       await tester.pumpAndSettle();
 
-      verify(() => service.saveCompany(any(), -26.48, -49.07, 'ROOFTOP'))
+      verify(() => service.saveCompany('g1', any(), -26.48, -49.07, 'ROOFTOP'))
           .called(1);
       final form = verify(() =>
               service.sendToWebhook(any(), captureAny(), 'u@x.com', 'Usuária'))
@@ -292,8 +313,38 @@ void main() {
       expect(results, [true]);
     });
 
+    testWidgets('sem permissão do webhook salva na carteira e NÃO envia ao CRM',
+        (tester) async {
+      when(() => service.webhookEnabledFor(any())).thenReturn(false);
+      final results = await pumpModal(tester);
+      await goToStep2(tester);
+      await fillSelects(tester);
+
+      await tester.ensureVisible(find.text('Salvar e Enviar para CRM'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Salvar e Enviar para CRM'));
+      await tester.pumpAndSettle();
+
+      verify(() => service.webhookEnabledFor('g1')).called(1);
+      verify(() => service.saveCompany('g1', any(), -26.48, -49.07, 'ROOFTOP'))
+          .called(1);
+      verifyNever(() => service.sendToWebhook(any(), any(), any(), any()));
+      expect(results, [true]);
+    });
+
+    testWidgets('sem organização ativa não valida nem consulta nada',
+        (tester) async {
+      await pumpModal(tester, withGroup: false);
+      await goToStep2(tester);
+
+      expect(find.text('Entre em uma organização para cadastrar empresas.'),
+          findsOneWidget);
+      verifyNever(() => service.cnpjInPortfolio(any(), any()));
+      verifyNever(() => service.fetchCompanyData(any()));
+    });
+
     testWidgets('mostra o erro quando salvar falha', (tester) async {
-      when(() => service.saveCompany(any(), any(), any(), any()))
+      when(() => service.saveCompany(any(), any(), any(), any(), any()))
           .thenThrow('Falha ao salvar');
       await pumpModal(tester);
       await goToStep2(tester);

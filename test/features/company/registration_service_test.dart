@@ -14,31 +14,55 @@ void main() {
     service = RegistrationService(mockApiClient);
   });
 
-  group('cnpjExists', () {
-    test('retorna true quando a busca em companies devolve algum resultado',
+  group('cnpjInPortfolio', () {
+    test('pergunta à carteira DA organização, não à tabela companies',
         () async {
-      when(() => mockApiClient.get('companies', query: any(named: 'query')))
-          .thenAnswer((_) async => [
-                {'id': '1'}
-              ]);
+      when(() => mockApiClient.rpc('portfolio_has_cnpj', any()))
+          .thenAnswer((_) async => true);
 
-      final result = await service.cnpjExists('12345678000199');
+      final result = await service.cnpjInPortfolio('g1', '12345678000199');
 
       expect(result, isTrue);
-      final query = verify(() =>
-              mockApiClient.get('companies', query: captureAny(named: 'query')))
-          .captured
-          .single as Map;
-      expect(query['cnpj'], 'eq.12345678000199');
+      final params =
+          verify(() => mockApiClient.rpc('portfolio_has_cnpj', captureAny()))
+              .captured
+              .single as Map;
+      expect(params, {'p_group_id': 'g1', 'p_cnpj': '12345678000199'});
+      verifyNever(
+          () => mockApiClient.get('companies', query: any(named: 'query')));
     });
 
-    test('retorna false quando a busca não encontra nada', () async {
-      when(() => mockApiClient.get('companies', query: any(named: 'query')))
-          .thenAnswer((_) async => []);
+    test('retorna false quando o CNPJ não está na carteira', () async {
+      when(() => mockApiClient.rpc('portfolio_has_cnpj', any()))
+          .thenAnswer((_) async => false);
 
-      final result = await service.cnpjExists('12345678000199');
+      expect(await service.cnpjInPortfolio('g1', '1'), isFalse);
+    });
+  });
 
-      expect(result, isFalse);
+  group('webhookEnabledFor', () {
+    test('só a organização configurada envia ao CRM do RUMO', () {
+      final s = RegistrationService(mockApiClient,
+          webhookGroupId: 'g-rumo', webhookUrl: 'https://crm.exemplo/hook');
+
+      expect(s.webhookEnabledFor('g-rumo'), isTrue);
+      expect(s.webhookEnabledFor('outra'), isFalse);
+      expect(s.webhookEnabledFor(null), isFalse);
+    });
+
+    test('sem organização configurada, ninguém envia', () {
+      final s = RegistrationService(mockApiClient,
+          webhookGroupId: '', webhookUrl: 'https://crm.exemplo/hook');
+
+      expect(s.webhookEnabledFor('g-rumo'), isFalse);
+      expect(s.webhookEnabledFor(''), isFalse);
+    });
+
+    test('sem URL do webhook, ninguém envia', () {
+      final s = RegistrationService(mockApiClient,
+          webhookGroupId: 'g-rumo', webhookUrl: '');
+
+      expect(s.webhookEnabledFor('g-rumo'), isFalse);
     });
   });
 

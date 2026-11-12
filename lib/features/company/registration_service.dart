@@ -8,13 +8,34 @@ import 'package:http/http.dart' as http;
 class RegistrationService {
   final ApiClient _apiClient;
 
-  RegistrationService(this._apiClient);
+  /// Organização que pode enviar cadastros ao webhook de CRM (ver
+  /// [AppConfig.webhookCrmGroupId]); injetável pra teste.
+  final String webhookGroupId;
 
-  Future<bool> cnpjExists(String cnpj) async {
-    final result = await _apiClient
-        .get('companies', query: {'cnpj': 'eq.$cnpj', 'select': 'id'});
-    return (result as List).isNotEmpty;
+  /// URL do webhook de CRM ([AppConfig.urlWebhookCrm]); injetável pra teste.
+  final String webhookUrl;
+
+  RegistrationService(
+    this._apiClient, {
+    this.webhookGroupId = AppConfig.webhookCrmGroupId,
+    this.webhookUrl = AppConfig.urlWebhookCrm,
+  });
+
+  /// O CNPJ já está na carteira da organização? Olha só a carteira dela: não dá
+  /// pra descobrir se a empresa existe em outra organização.
+  Future<bool> cnpjInPortfolio(String groupId, String cnpj) async {
+    final result = await _apiClient.rpc(
+      'portfolio_has_cnpj',
+      {'p_group_id': groupId, 'p_cnpj': cnpj},
+    );
+    return result == true;
   }
+
+  /// O webhook de CRM só recebe cadastros da organização configurada.
+  bool webhookEnabledFor(String? groupId) =>
+      webhookUrl.isNotEmpty &&
+      webhookGroupId.isNotEmpty &&
+      groupId == webhookGroupId;
 
   // Consulta de dados cadastrais por CNPJ — hoje via BrasilAPI
   // (backend/app/services/company_lookup_service.py), que devolve o mesmo
@@ -72,7 +93,11 @@ class RegistrationService {
 
   double _toRad(double deg) => deg * pi / 180;
 
-  Future<void> saveCompany(
+  /// Cadastra a empresa na carteira da organização (RPC `register_company`, que
+  /// confere que quem chama é membro e pode cadastrar). Devolve `true` se ela já
+  /// estava na carteira.
+  Future<bool> saveCompany(
+    String groupId,
     Map<String, dynamic> dadosApi,
     double lat,
     double lon,
@@ -89,9 +114,9 @@ class RegistrationService {
     // company_financial_profile (FK company_id) no schema novo — ainda não
     // são gravados por este método; decisão de quando/como popular esses
     // dois campos fica pendente.
-    await _apiClient.upsert(
-      'companies',
-      {
+    final result = await _apiClient.rpc('register_company', {
+      'p_group_id': groupId,
+      'p_data': {
         'cnpj': dadosApi['cnpj'],
         'razao_social': dadosApi['razao'],
         'nome_fantasia': dadosApi['fantasia'],
@@ -116,8 +141,8 @@ class RegistrationService {
         'longitude': lon,
         'precisao_geocodificacao': precisao,
       },
-      onConflict: 'cnpj',
-    );
+    });
+    return (result as Map<String, dynamic>)['already_in_portfolio'] == true;
   }
 
   String? _parseDate(String? d) {
@@ -135,8 +160,6 @@ class RegistrationService {
     String userEmail,
     String userName,
   ) async {
-    const webhookUrl = AppConfig.urlWebhookCrm;
-
     final payload = {
       'assignments': [
         {'name': 'Primeiro nome', 'value': dadosForm['primeiro_nome']},

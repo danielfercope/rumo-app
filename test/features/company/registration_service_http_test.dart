@@ -39,19 +39,22 @@ void main() {
   setUp(() {
     api = MockApiClient();
     service = RegistrationService(api);
-    when(() => api.upsert(any(), any(), onConflict: any(named: 'onConflict')))
-        .thenAnswer((_) async => null);
+    when(() => api.rpc('register_company', any())).thenAnswer(
+        (_) async => {'company_id': 'c1', 'already_in_portfolio': false});
   });
 
-  Map<String, dynamic> savedBody() =>
-      verify(() => api.upsert('companies', captureAny(), onConflict: 'cnpj'))
-          .captured
-          .single as Map<String, dynamic>;
+  /// Dados da empresa enviados na RPC register_company.
+  Map<String, dynamic> savedBody() {
+    final params = verify(() => api.rpc('register_company', captureAny()))
+        .captured
+        .single as Map<String, dynamic>;
+    return params['p_data'] as Map<String, dynamic>;
+  }
 
   group('saveCompany', () {
     test('mapeia os campos da consulta de CNPJ para a tabela companies',
         () async {
-      await service.saveCompany(_dadosApi, -26.4, -49.0, 'ROOFTOP');
+      await service.saveCompany('g1', _dadosApi, -26.4, -49.0, 'ROOFTOP');
 
       final body = savedBody();
       expect(body['cnpj'], '12345678000199');
@@ -68,6 +71,7 @@ void main() {
     test('telefone fica nulo sem DDD ou número e data inválida vira nula',
         () async {
       await service.saveCompany(
+          'g1',
           {..._dadosApi, 'ddd_1': '', 'data_abertura': '00000000'},
           0,
           0,
@@ -79,12 +83,35 @@ void main() {
 
     test('data curta demais é descartada em vez de lançar erro', () async {
       await service.saveCompany(
-          {..._dadosApi, 'data_abertura': '2010'}, 0, 0, 'APPROXIMATE');
+          'g1', {..._dadosApi, 'data_abertura': '2010'}, 0, 0, 'APPROXIMATE');
       expect(savedBody()['data_abertura'], isNull);
     });
 
+    test('grava na carteira da organização pela RPC, nunca direto em companies',
+        () async {
+      await service.saveCompany('g1', _dadosApi, -26.4, -49.0, 'ROOFTOP');
+
+      final params = verify(() => api.rpc('register_company', captureAny()))
+          .captured
+          .single as Map<String, dynamic>;
+      expect(params['p_group_id'], 'g1');
+      verifyNever(
+          () => api.upsert(any(), any(), onConflict: any(named: 'onConflict')));
+      verifyNever(() => api.post(any(), any()));
+    });
+
+    test('devolve se a empresa já estava na carteira', () async {
+      expect(
+          await service.saveCompany('g1', _dadosApi, 0, 0, 'ROOFTOP'), isFalse);
+
+      when(() => api.rpc('register_company', any())).thenAnswer(
+          (_) async => {'company_id': 'c1', 'already_in_portfolio': true});
+      expect(
+          await service.saveCompany('g1', _dadosApi, 0, 0, 'ROOFTOP'), isTrue);
+    });
+
     test('campos ausentes não quebram o endereço', () async {
-      await service.saveCompany({'cnpj': '1'}, 0, 0, 'APPROXIMATE');
+      await service.saveCompany('g1', {'cnpj': '1'}, 0, 0, 'APPROXIMATE');
       final body = savedBody();
       expect(body['endereco_completo'], ' ,  - ');
       expect(body['data_abertura'], isNull);

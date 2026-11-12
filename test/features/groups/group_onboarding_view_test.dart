@@ -53,27 +53,27 @@ void main() {
       (tester) async {
     await pump(tester);
 
-    expect(
-        find.text('Você ainda não faz parte de nenhum grupo'), findsOneWidget);
-    expect(find.text('Criar grupo'), findsOneWidget);
-    expect(find.text('Entrar no grupo'), findsOneWidget);
+    expect(find.text('Você ainda não faz parte de nenhuma organização'),
+        findsOneWidget);
+    expect(find.text('Criar organização'), findsOneWidget);
+    expect(find.text('Entrar na organização'), findsOneWidget);
   });
 
   testWidgets('criar sem nome pede o nome e não chama o serviço',
       (tester) async {
     await pump(tester);
 
-    await tester.tap(find.text('Criar grupo'));
+    await tester.tap(find.text('Criar organização'));
     await tester.pump();
 
-    expect(find.text('Digite um nome pro grupo'), findsOneWidget);
+    expect(find.text('Digite um nome pra organização'), findsOneWidget);
     verifyNever(() => service.createGroup(any()));
   });
 
   testWidgets('entrar sem código pede o código', (tester) async {
     await pump(tester);
 
-    await tester.tap(find.text('Entrar no grupo'));
+    await tester.tap(find.text('Entrar na organização'));
     await tester.pump();
 
     expect(find.text('Cole o código de convite'), findsOneWidget);
@@ -86,8 +86,8 @@ void main() {
     await pump(tester);
     final before = groupsFetched;
 
-    await tester.enterText(field('Nome do grupo'), '  Agro Sul  ');
-    await tester.tap(find.text('Criar grupo'));
+    await tester.enterText(field('Nome da organização'), '  Agro Sul  ');
+    await tester.tap(find.text('Criar organização'));
     await tester.pump();
     await tester.pump();
 
@@ -101,7 +101,7 @@ void main() {
     await pump(tester);
 
     await tester.enterText(field('Cole aqui o código de convite'), ' ABC ');
-    await tester.tap(find.text('Entrar no grupo'));
+    await tester.tap(find.text('Entrar na organização'));
     await tester.pump();
     await tester.pump();
 
@@ -114,15 +114,15 @@ void main() {
         .thenThrow(Exception('convite inválido'));
     await pump(tester);
 
-    await tester.enterText(field('Nome do grupo'), 'X');
-    await tester.tap(find.text('Criar grupo'));
+    await tester.enterText(field('Nome da organização'), 'X');
+    await tester.tap(find.text('Criar organização'));
     await tester.pump();
     await tester.pump();
 
     expect(find.textContaining('Não foi possível concluir'), findsOneWidget);
     expect(find.textContaining('convite inválido'), findsOneWidget);
     final button = tester.widget<CupertinoButton>(
-        find.widgetWithText(CupertinoButton, 'Criar grupo'));
+        find.widgetWithText(CupertinoButton, 'Criar organização'));
     expect(button.onPressed, isNotNull);
   });
 }

@@ -12,6 +12,7 @@ import 'features/auth/profile_page.dart';
 import 'features/leads/leads_page.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/groups/presentation/groups_home_page.dart';
+import 'features/groups/presentation/organization_gate.dart';
 import 'features/map/radar_page.dart';
 
 Future<void> main() async {
@@ -56,7 +57,8 @@ class RumoApp extends ConsumerWidget {
       home: authState.when(
         data: (user) {
           if (user != null) {
-            return const MainNavigation();
+            // sem organização, só a tela de boas-vindas (sem mapa nem busca)
+            return const OrganizationGate(child: MainNavigation());
           }
           return const LoginPage();
         },

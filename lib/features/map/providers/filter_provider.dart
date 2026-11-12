@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../groups/providers/group_provider.dart';
 import '../data/company_repository.dart';
 
 class MapFilters {
@@ -96,6 +97,17 @@ final mapFiltersProvider =
 
 final filterOptionsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final repository = ref.watch(companyRepositoryProvider);
+  // Sem organização não há opções (e o servidor devolveria vazio de qualquer jeito).
+  final groupId = ref.watch(activeGroupProvider)?.group.id;
+  if (groupId == null) {
+    return {
+      'segments': <String>[],
+      'products': <String>[],
+      'states': <String>[],
+      'cnaes': <String>[],
+      'stateToCities': <String, List<String>>{},
+    };
+  }
   return await repository.getFilterOptions();
 });
 
