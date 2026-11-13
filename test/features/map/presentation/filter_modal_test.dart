@@ -66,8 +66,47 @@ void main() {
     await pumpModal(tester);
     expect(find.text('Filtros Avançados'), findsOneWidget);
     expect(find.text('Raio de Destaque no Mapa'), findsOneWidget);
-    expect(find.text('5 km'), findsOneWidget);
-    expect(find.text('Segmento'), findsOneWidget);
+    // segmento saiu: a carteira importada do CRM não tem esse dado
+    expect(find.text('Segmento'), findsNothing);
+    expect(find.text('Produto'), findsOneWidget);
+    for (final km in ['5 km', '10 km', '30 km', '100 km']) {
+      expect(find.text(km), findsWidgets);
+    }
+  });
+
+  testWidgets('filtro sem nenhuma opção na carteira não aparece',
+      (tester) async {
+    repo = FakeCompanyRepository(options: {
+      'products': <String>[],
+      'states': ['SC'],
+      'cnaes': <String>[],
+      'cities': ['Joinville'],
+      'stateToCities': {
+        'SC': ['Joinville']
+      },
+    });
+    await pumpModal(tester);
+    expect(find.text('Produto'), findsNothing);
+    expect(find.text('CNAE'), findsNothing);
+    expect(find.text('Estado (UF)'), findsOneWidget);
+  });
+
+  testWidgets('atalhos de raio e limite de 100 km', (tester) async {
+    await pumpModal(tester);
+
+    await tester.tap(find.byKey(const ValueKey('raio-30')));
+    await tester.pumpAndSettle();
+    final slider = tester.widget<CupertinoSlider>(find.byType(CupertinoSlider));
+    expect(slider.max, 100);
+    expect(slider.value, 30);
+
+    await tester.tap(find.text('Aplicar'));
+    await tester.pumpAndSettle();
+    expect(container.read(mapFiltersProvider).radius, 30);
+
+    // nada passa de 100 km, mesmo vindo de fora da tela
+    container.read(mapFiltersProvider.notifier).setRadius(15000);
+    expect(container.read(mapFiltersProvider).radius, 100);
   });
 
   testWidgets('mostra erro quando as opções não carregam', (tester) async {
@@ -80,27 +119,23 @@ void main() {
       (tester) async {
     await pumpModal(tester);
 
-    await pick(tester, 'Segmento', 'Varejo');
     await pick(tester, 'Produto', 'P1');
     await pick(tester, 'CNAE', '4712');
 
     await tester.tap(find.text('Cliente'));
     await tester.pumpAndSettle();
 
-    tester
-        .widget<CupertinoSlider>(find.byType(CupertinoSlider))
-        .onChanged!(500);
+    tester.widget<CupertinoSlider>(find.byType(CupertinoSlider)).onChanged!(42);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Aplicar'));
     await tester.pumpAndSettle();
 
     final f = container.read(mapFiltersProvider);
-    expect(f.segment, 'Varejo');
     expect(f.product, 'P1');
     expect(f.cnae, '4712');
     expect(f.type, 'client');
-    expect(f.radius, 500);
+    expect(f.radius, 42);
   });
 
   testWidgets('escolher estado restringe as cidades ao estado', (tester) async {
@@ -129,12 +164,12 @@ void main() {
   testWidgets('o botão de limpar do campo remove o valor selecionado',
       (tester) async {
     await pumpModal(tester);
-    await pick(tester, 'Segmento', 'Varejo');
-    expect(find.text('Varejo'), findsOneWidget);
+    await pick(tester, 'Produto', 'P1');
+    expect(find.text('P1'), findsOneWidget);
 
     await tester.tap(find.byIcon(CupertinoIcons.clear_circled_solid));
     await tester.pumpAndSettle();
-    expect(find.text('Varejo'), findsNothing);
+    expect(find.text('P1'), findsNothing);
   });
 
   testWidgets('"Limpar Todos" zera os filtros temporários', (tester) async {
@@ -144,7 +179,7 @@ void main() {
     ]);
     addTearDown(container.dispose);
     container.read(mapFiltersProvider.notifier)
-      ..setSegment('Varejo')
+      ..setProduct('P1')
       ..setType('lead');
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1;
@@ -155,13 +190,13 @@ void main() {
           const CupertinoApp(home: CupertinoPageScaffold(child: FilterModal())),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Varejo'), findsOneWidget);
+    expect(find.text('P1'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Limpar Todos'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Limpar Todos'));
     await tester.pumpAndSettle();
-    expect(find.text('Varejo'), findsNothing);
+    expect(find.text('P1'), findsNothing);
 
     await tester.tap(find.text('Aplicar'));
     await tester.pumpAndSettle();

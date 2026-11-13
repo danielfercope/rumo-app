@@ -74,6 +74,25 @@ class GroupService {
         .toList();
   }
 
+  /// Trajeto de [userId] entre [from] e [to] (ordem cronológica). Só admin do
+  /// grupo, com rastreamento ligado — a RPC valida.
+  Future<List<TrackingHistoryPoint>> listTrackingHistory(
+    String groupId,
+    String userId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final data = await _apiClient.rpc('list_group_tracking_history', {
+      'p_group_id': groupId,
+      'p_user_id': userId,
+      'p_from': from.toUtc().toIso8601String(),
+      'p_to': to.toUtc().toIso8601String(),
+    });
+    return (data as List)
+        .map((e) => TrackingHistoryPoint.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Grupos do usuário logado, com o papel dele em cada um. Nunca inclui
   /// `invite_hash` no embed — a coluna não tem GRANT de SELECT pra web_user
   /// (ver db/schema/007_groups.sql), então um `groups(*)` aqui faria o

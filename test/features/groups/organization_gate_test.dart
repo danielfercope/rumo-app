@@ -201,7 +201,7 @@ void main() {
 
       verify(() => service.createGroup('Agro Sul')).called(1);
       expect(find.byType(GroupOnboardingView), findsNothing);
-      expect(find.text('Conectar CRM · 1 de 3'), findsOneWidget,
+      expect(find.text('Passo 1 de 3'), findsOneWidget,
           reason: 'logo após criar, o assistente do CRM abre');
       expect(container.read(pendingCrmSetupGroupIdProvider), isNull,
           reason: 'abre uma vez só');
@@ -218,14 +218,14 @@ void main() {
           find.widgetWithText(CupertinoTextField, 'Nome da organização'), 'X');
       await tester.tap(find.text('Criar organização'));
       await tester.pumpAndSettle();
-      expect(find.text('Conectar CRM · 1 de 3'), findsOneWidget);
+      expect(find.text('Passo 1 de 3'), findsOneWidget);
 
       await tester.tap(find.text('Cancelar'));
       await tester.pumpAndSettle();
       container.invalidate(myGroupsProvider); // recarrega a lista
       await tester.pumpAndSettle();
 
-      expect(find.text('Conectar CRM · 1 de 3'), findsNothing);
+      expect(find.text('Passo 1 de 3'), findsNothing);
     });
 
     testWidgets('entrar com código: não abre o assistente do CRM',
@@ -245,7 +245,7 @@ void main() {
 
       verify(() => service.joinByHash('CODIGO')).called(1);
       expect(find.byType(GroupOnboardingView), findsNothing);
-      expect(find.text('Conectar CRM · 1 de 3'), findsNothing,
+      expect(find.text('Passo 1 de 3'), findsNothing,
           reason: 'quem entra numa existente não conecta CRM (já é da org)');
       expect(container.read(pendingCrmSetupGroupIdProvider), isNull);
     });

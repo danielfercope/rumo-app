@@ -3,7 +3,7 @@
 # em producao, em etapas separadas.
 #
 #   enable_carteira_sync.sh migrate  leva o repositorio da EC2 para a BRANCH (padrao main) e aplica
-#                                    db/schema/007..014 no banco de producao
+#                                    db/schema/007..014, 017 e 018 no banco de producao
 #   enable_carteira_sync.sh config   garante no Secrets Manager a chave de cifra dos tokens
 #                                    (CRM_TOKEN_ENCRYPTION_KEY, gerada UMA vez) e a
 #                                    GEOCODING_API_KEY, com o job ainda DESLIGADO
@@ -51,6 +51,8 @@ migrations=(
   012_crm_sync_group_members.sql
   013_carteira_interacao.sql
   014_carteira_prioridade.sql
+  017_progresso_sincronizacao.sql
+  018_enriquecimento_cache.sql
 )
 
 dry() { [ -n "${DRY_RUN:-}" ]; }

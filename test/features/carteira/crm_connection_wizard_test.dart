@@ -47,6 +47,10 @@ void main() {
   });
 
   Future<void> pump(WidgetTester tester) async {
+    // o assistente é mais alto que o viewport padrão do teste (800x600)
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
       overrides: [carteiraServiceProvider.overrideWithValue(service)],
       child: CupertinoApp(
@@ -110,7 +114,7 @@ void main() {
     await enterTokenAndValidate(tester);
 
     // Passo 2: campos pré-selecionados e "customer" já como Cliente.
-    expect(find.text('Conectar CRM · 2 de 3'), findsOneWidget);
+    expect(find.text('Passo 2 de 3'), findsOneWidget);
     expect(
         find.descendant(
             of: find.byKey(const ValueKey('pick-cnpj')),
@@ -133,12 +137,19 @@ void main() {
     expect(mapping.valoresPerdido, isEmpty);
 
     // Passo 3.
-    expect(find.text('Conectar CRM · 3 de 3'), findsOneWidget);
-    expect(
-        find.text('Encontramos 8 empresas com CNPJ válido:'), findsOneWidget);
-    expect(find.text('• 3 clientes'), findsOneWidget);
-    expect(find.text('• 4 leads'), findsOneWidget);
-    expect(find.text('• 1 perdidas'), findsOneWidget);
+    expect(find.text('Passo 3 de 3'), findsOneWidget);
+    expect(find.text('8'), findsOneWidget);
+    expect(find.text('empresas com CNPJ válido'), findsOneWidget);
+    for (final (key, n) in [
+      ('clientes', '3'),
+      ('leads', '4'),
+      ('perdidas', '1')
+    ]) {
+      expect(
+          find.descendant(
+              of: find.byKey(ValueKey('stat-$key')), matching: find.text(n)),
+          findsOneWidget);
+    }
     expect(find.textContaining('2 empresas serão ignoradas'), findsOneWidget);
 
     await tester.tap(find.text('Conectar e importar'));
@@ -160,7 +171,7 @@ void main() {
     await enterTokenAndValidate(tester);
 
     expect(find.textContaining('O CRM recusou o token'), findsOneWidget);
-    expect(find.text('Conectar CRM · 1 de 3'), findsOneWidget);
+    expect(find.text('Passo 1 de 3'), findsOneWidget);
     verifyNever(() => service.conectar(any(), any(), any()));
   });
 
@@ -261,7 +272,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Apenas administradores'), findsOneWidget);
-    expect(find.text('Conectar CRM · 3 de 3'), findsOneWidget);
+    expect(find.text('Passo 3 de 3'), findsOneWidget);
     expect(result, isNull);
   });
 
@@ -273,7 +284,7 @@ void main() {
     await enterTokenAndValidate(tester);
     await tester.tap(find.text('Voltar'));
     await tester.pump();
-    expect(find.text('Conectar CRM · 1 de 3'), findsOneWidget);
+    expect(find.text('Passo 1 de 3'), findsOneWidget);
 
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();

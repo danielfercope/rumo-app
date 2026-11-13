@@ -83,4 +83,35 @@ void main() {
       expect(company.distance, 3.0);
     });
   });
+
+  group('displayName', () {
+    test('fantasia vazia (a BrasilAPI manda "") cai pra razão social', () {
+      final c = Company.fromJson({
+        'id': '1',
+        'nome_da_empresa': 'SNP - SISTEMA NUTRICIONAL LTDA',
+        'nome_fantasia': '',
+      });
+      expect(c.fantasyName, isNull);
+      expect(c.displayName, 'SNP - SISTEMA NUTRICIONAL LTDA');
+    });
+
+    test('prefere a fantasia; espaços não contam; sem nada vira "Empresa"', () {
+      expect(
+          Company.fromJson({
+            'id': '1',
+            'nome_da_empresa': 'WEG SA',
+            'nome_fantasia': 'WEG'
+          }).displayName,
+          'WEG');
+      expect(
+          Company.fromJson({
+            'id': '1',
+            'nome_da_empresa': 'WEG SA',
+            'nome_fantasia': '   '
+          }).displayName,
+          'WEG SA');
+      expect(Company.fromJson({'id': '1', 'nome_fantasia': ''}).displayName,
+          'Empresa');
+    });
+  });
 }

@@ -419,6 +419,22 @@ def test_label_imprime_status_e_teto(tmp_path, capsys):
     assert len(json.loads(out.read_text())) == 200
 
 
+def test_label_aceita_taxa_de_clientes_maior(tmp_path):
+    inp = tmp_path / "in.json"
+    inp.write_text(json.dumps([c.to_json() for c in companies(400)]))
+
+    def clientes(*extra):
+        out = tmp_path / "out.json"
+        cli.cmd_label(cli.build_parser().parse_args(
+            ["label", "--in", str(inp), "--out", str(out), *extra]))
+        return sum(x["status"] == "cliente" for x in json.loads(out.read_text()))
+
+    # 30% esperado: a taxa sorteada fica perto disso e acima da padrão (20%)
+    n = clientes("--client-rate", "0.30")
+    assert 0.24 <= n / 400 <= 0.36
+    assert n > clientes()
+
+
 # ─── Contatos e negócios fictícios ──────────────────────────────────────
 
 
@@ -566,3 +582,53 @@ async def test_relate_sem_apply_e_dry_run_e_nao_faz_requisicao(tmp_path, capsys,
     out = capsys.readouterr().out
     assert "DRY-RUN" in out and "3 contatos + 3 negócios" in out
     assert len(respx.calls) == 0
+
+
+# ─── rebalance: leva a carteira que já está no CRM a N% de clientes ─────
+
+
+def _carteira(n_clientes, n_leads, n_perdidos=0):
+    found = {}
+    for i in range(n_clientes + n_leads + n_perdidos):
+        stage = "customer" if i < n_clientes else "lead" if i < n_clientes + n_leads else "other"
+        found[f"cnpj{i}"] = {"id": str(i), "lifecyclestage": stage}
+    return found
+
+
+def test_rebalance_conta_clientes_existentes_e_nunca_promove_perdidos():
+    found = _carteira(n_clientes=5, n_leads=90, n_perdidos=5)  # 100 empresas
+
+    picked = cli.pick_promotions(found, 0.30, seed=1)
+
+    assert len(picked) == 25  # 30 alvo − 5 que já são clientes
+    assert all(found[v["cnpj"]]["lifecyclestage"] == "lead" for v in picked.values())
+    assert picked == cli.pick_promotions(found, 0.30, seed=1)  # reprodutível
+
+
+def test_rebalance_nao_faz_nada_se_ja_atingiu_a_taxa():
+    assert cli.pick_promotions(_carteira(40, 60), 0.30, seed=1) == {}
+
+
+@respx.mock
+async def test_rebalance_dry_run_so_le_e_apply_grava_registro_e_desfaz(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HUBSPOT_SEED_TOKEN", "segredo-token")
+    rows = [{"id": str(i), "properties": {"cnpj": f"c{i}", "lifecyclestage": "lead"}} for i in range(10)]
+    respx.post(f"{HS}/crm/v3/objects/companies/search").mock(return_value=_search(rows))
+    update = respx.post(f"{HS}/crm/v3/objects/companies/batch/update").respond(200, json={})
+    out = tmp_path / "alt.json"
+    p = cli.build_parser()
+
+    await cli.cmd_rebalance(p.parse_args(["rebalance", "--out", str(out)]))
+    assert update.call_count == 0 and "DRY-RUN" in capsys.readouterr().out
+
+    await cli.cmd_rebalance(p.parse_args(["rebalance", "--out", str(out), "--apply"]))
+    sent = json.loads(update.calls[0].request.content)["inputs"]
+    assert len(sent) == 3 and all(x["properties"] == {"lifecyclestage": "customer"} for x in sent)
+    assert len(json.loads(out.read_text())) == 3
+
+    await cli.cmd_rebalance(p.parse_args(["rebalance", "--desfazer", str(out), "--apply"]))
+    undone = json.loads(update.calls[1].request.content)["inputs"]
+    assert len(undone) == 3 and all(x["properties"] == {"lifecyclestage": "lead"} for x in undone)
+    # sem --lote a busca é por CNPJ preenchido, não pelo marcador do seed
+    first = json.loads(respx.calls[0].request.content)
+    assert first["filterGroups"][0]["filters"][0]["operator"] == "HAS_PROPERTY"

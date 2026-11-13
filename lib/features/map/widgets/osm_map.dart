@@ -37,6 +37,7 @@ class OsmMap extends StatelessWidget {
     required this.zoom,
     this.controller,
     this.markers = const [],
+    this.polylines = const [],
     this.radiusMeters,
     this.onMapReady,
     this.interactive = true,
@@ -46,6 +47,9 @@ class OsmMap extends StatelessWidget {
   final double zoom;
   final MapController? controller;
   final List<OsmMarkerData> markers;
+
+  /// Linhas desenhadas sob os marcadores (ex.: trajeto de um membro).
+  final List<Polyline> polylines;
 
   /// Círculo de raio (em metros) desenhado em volta de [center].
   final double? radiusMeters;
@@ -84,6 +88,7 @@ class OsmMap extends StatelessWidget {
               borderStrokeWidth: 1,
             ),
           ]),
+        if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
         MarkerLayer(
           markers: [
             for (final m in markers)

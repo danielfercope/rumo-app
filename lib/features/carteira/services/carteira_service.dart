@@ -46,13 +46,33 @@ class CarteiraService {
 
   /// Leads da organização em ordem de prioridade. O Backend só lê o resultado
   /// já calculado (a cada sincronização); qualquer membro pode chamar.
-  Future<PriorityResult> prioridade(String groupId, {int limit = 50}) async {
+  ///
+  /// [compacto] devolve só id, posição e nota (sem nome nem motivos), com um
+  /// limite bem maior: é o que o mapa usa pra colorir a carteira inteira.
+  Future<PriorityResult> prioridade(String groupId,
+      {int limit = 50, bool compacto = false}) async {
     final data = await _apiClient.backendRequest(
       'GET',
       'carteira/prioridade',
-      query: {'group_id': groupId, 'limit': '$limit'},
+      query: {
+        'group_id': groupId,
+        'limit': '$limit',
+        if (compacto) 'compacto': 'true',
+      },
     ) as Map<String, dynamic>;
     return PriorityResult.fromJson(data);
+  }
+
+  /// Por que um lead tem a nota que tem. Nulo se ele não está na lista de leads
+  /// priorizados (virou cliente, ou o cálculo ainda não rodou).
+  Future<PriorityExplanation?> explicarEmpresa(
+      String groupId, String companyId) async {
+    final data = await _apiClient.backendRequest(
+      'GET',
+      'carteira/prioridade/empresa',
+      query: {'group_id': groupId, 'company_id': companyId},
+    ) as Map<String, dynamic>;
+    return PriorityExplanation.fromJson(data);
   }
 
   Future<void> sincronizarAgora(String groupId) => _apiClient.backendRequest(
