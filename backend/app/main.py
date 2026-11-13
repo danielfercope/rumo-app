@@ -37,6 +37,8 @@ from .services.carteira_sync_service import CarteiraSyncService
 from .services.crm_service import CrmService
 from .services.crm_sync_service import CrmSyncService
 from .services.geocoding_service import GeocodingService
+from .services.enrichment.service import FONTES as ENRICHMENT_SOURCES
+from .services.enrichment.service import EnrichmentService
 from .services.postgrest_client import PostgrestClient
 from .services.priority_service import PriorityService
 from .services.token_cipher import TokenCipher
@@ -50,6 +52,12 @@ geocoding_service = GeocodingService()
 postgrest_client = PostgrestClient()
 access_service = AccessService(postgrest_client)
 priority_service = PriorityService(postgrest_client)
+enrichment_service = EnrichmentService(
+    postgrest_client,
+    access_service,
+    google_api_key=settings.geocoding_api_key,
+    google_enabled=settings.enrichment_google_places_enabled,
+)
 crm_sync_service = CrmSyncService(
     crm_service, company_lookup_service, geocoding_service, postgrest_client
 )
@@ -114,6 +122,7 @@ async def lifespan(app: FastAPI):
     await company_lookup_service.aclose()
     await crm_service.aclose()
     await geocoding_service.aclose()
+    await enrichment_service.aclose()
     await postgrest_client.aclose()
 
 
@@ -192,6 +201,23 @@ async def crm(payload: CrmRequest, uid: str = Depends(current_uid)) -> dict:
         raise HTTPException(502, str(exc)) from exc
 
 
+@app.get("/enriquecimento/{fonte}")
+async def enriquecimento(
+    fonte: str, group_id: str, cnpj: str, uid: str = Depends(current_uid)
+) -> dict:
+    """Dados públicos de uma empresa da carteira, por fonte (receita, compras,
+    comex, municipio, google). Fonte fora do ar não é erro HTTP: volta com
+    `status: indisponivel` (ou o último dado guardado, marcado desatualizado)."""
+    if fonte not in ENRICHMENT_SOURCES:
+        raise HTTPException(404, f"Fonte desconhecida: {fonte}")
+    try:
+        return await enrichment_service.get(uid, group_id, cnpj, fonte)
+    except NotGroupMemberError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except CompanyNotInPortfolioError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 # ─── Conexão da organização com o CRM (carteira) ────────────────────────
 # Identidade = o token interno que o app já usa (current_uid); só admin da organização.
 
@@ -221,11 +247,29 @@ async def _carteira_call(coro):
 
 @app.get("/carteira/prioridade")
 async def prioridade(
-    group_id: str, limit: int = 50, uid: str = Depends(current_uid)
+    group_id: str,
+    limit: int = 50,
+    compacto: bool = False,
+    uid: str = Depends(current_uid),
 ) -> dict:
-    """Leads da organização em ordem de prioridade (qualquer membro lê)."""
+    """Leads da organização em ordem de prioridade (qualquer membro lê).
+
+    `compacto=true` devolve só id, posição e nota (sem nome nem motivos), com
+    limite bem maior: é o que o mapa usa pra colorir a carteira inteira."""
     try:
-        return await priority_service.ranking(uid, group_id, limit)
+        return await priority_service.ranking(uid, group_id, limit, compacto)
+    except NotGroupMemberError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.get("/carteira/prioridade/empresa")
+async def prioridade_empresa(
+    group_id: str, company_id: str, uid: str = Depends(current_uid)
+) -> dict:
+    """Por que um lead tem a nota que tem: fatores a favor e contra (qualquer
+    membro lê). `disponivel: false` se a empresa não está na lista de leads."""
+    try:
+        return await priority_service.explain(uid, group_id, company_id)
     except NotGroupMemberError as exc:
         raise HTTPException(403, str(exc)) from exc
 

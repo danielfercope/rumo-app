@@ -49,13 +49,17 @@ lib/
     │   ├── radar_page.dart            # Página do mapa (GoogleMap + bottom list)
     │   ├── models/
     │   │   └── company_model.dart     # Model Company (vem da RPC search_companies)
+    │   │   ├── priority_insight.dart  # Lógica pura da explicação: resumo, "vale a viagem?" (compara com os leads mais perto) e diferenças de fatores
+    │   │   └── lead_tier.dart         # Faixa do lead (quente/morno/frio) pela nota de prioridade; sem nota, terços pela posição
     │   ├── providers/
     │   │   ├── company_provider.dart  # companiesProvider (FutureProvider)
     │   │   ├── location_provider.dart # locationProvider (GPS com fallback)
     │   │   ├── filter_provider.dart   # MapFiltersNotifier + filterOptionsProvider
     │   │   └── map_backend_provider.dart # useGoogleMapsProvider: Google Maps ou fallback OSM
+    │   │   └── lead_tier_provider.dart # leadPriorityProvider/leadTiersProvider: lê a prioridade da carteira inteira (modo compacto) → posição, nota e faixa por company_id
     │   ├── widgets/
     │   │   └── osm_map.dart           # OsmMap (flutter_map) usado quando o Google Maps não está disponível
+    │   │   └── lead_pin.dart          # Pino de lead (cor/tamanho por faixa) em widget e PNG + legenda. Cliente = símbolo da Save (assets/icon_save.webp)
     │   ├── services/
     │   │   ├── company_service.dart   # Chamadas RPC via ApiClient (backend self-hospedado)
     │   │   └── tracking_service.dart  # Rastreamento de localização via ApiClient (timer 5 min)
@@ -64,6 +68,7 @@ lib/
     │   └── presentation/
     │       ├── radar_viewmodel.dart   # Estado de UI do bottom sheet
     │       ├── filter_modal.dart      # Modal de filtros avançados
+    │       ├── priority_explanation_section.dart # "Por que esta prioridade" nos detalhes: nota, fatores a favor/contra (% dos clientes × base), comparação com os leads mais perto
     │       └── company_details_modal.dart # Detalhes da empresa + CRM
     │
     ├── carteira/                      # Conexão da organização com o CRM (só admin do grupo) + prioridades dos leads
@@ -80,8 +85,15 @@ lib/
     │       └── crm_connection_wizard.dart  # token → campos → prévia → conectar
     │
     ├── groups/presentation/
-    │   ├── organization_gate.dart     # porta de entrada: só quem tem organização vê as abas
-    │   └── organization_onboarding_page.dart # sem organização: criar uma (+ CRM) ou entrar com o código
+    │   ├── organization_gate.dart     # espera a lista de organizações; abre o assistente do CRM após criar uma
+    │   └── group_onboarding_view.dart # aba Organização sem organização: explica o bloqueio, cria uma (+ CRM) ou entra com o código
+    │
+    ├── enrichment/                    # Dados públicos nos detalhes da empresa (Receita, compras públicas,
+    │   │                              # economia do município, Google) — um bloco por fonte, cada um carrega sozinho
+    │   ├── models/enrichment_models.dart # envelope (ok/vazio/indisponivel/desativado) + ReceitaData, ComprasData, …
+    │   ├── services/enrichment_service.dart # GET /backend/enriquecimento/{fonte}
+    │   ├── providers/enrichment_provider.dart # enrichmentProvider.family((groupId, cnpj, fonte))
+    │   └── presentation/enrichment_cards.dart # DetailCard: resumo sempre visível, detalhes ao tocar
     │
     ├── leads/                         # Busca textual de leads + visão "Prioridades" (segmento no topo)
     │   ├── leads_page.dart
@@ -163,6 +175,7 @@ flowchart TD
     NAV -->|Tab 0| RADAR[RadarPage]
     NAV -->|Tab 1| LEADS[LeadsPage]
     NAV -->|Tab 2| PROFILE_TAB[Perfil + Logout]
+    NAV -->|Tab 3| ORG_TAB[Organização<br/>sem organização: só Organização + Perfil]
 
     RADAR -->|tap marker| DETAILS[CompanyDetailsModal]
     RADAR -->|filtros| FILTER_MODAL[FilterModal]
@@ -219,13 +232,14 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `company_contacts` | Telefones/e-mails/redes sociais secundários, 1:N; mesma regra de visibilidade |
 | `company_crm_sync` | Status de sincronização com o HubSpot; mesma regra de visibilidade |
 | `profiles` | Perfis de usuário (`id` = UID do Firebase; nome, departamento, nivel_acesso) |
-| `tracking_equipe` | Posição atual de cada usuário (upsert por `user_id`) |
-| `tracking_history` | Histórico de localizações (append-only) |
+| `tracking_equipe` | Posição atual de cada usuário (upsert por `user_id`), com `foto_url` (URL da foto da conta Google, mandada pelo app; o Mapa da Equipe mostra a foto ou as iniciais) |
+| `tracking_history` | Histórico de localizações (append-only, 1 ponto a cada 5 min por usuário). O admin lê o trajeto de um membro por dia via RPC `list_group_tracking_history` (`016_tracking_history.sql`; só admin do grupo, com `tracking_enabled`, máx. 31 dias) — tela `TrackingHistoryPage`, aberta ao tocar num membro do Mapa da Equipe. **Em produção a `016` precisa ser aplicada à mão** |
 | `crm_sync_state` | Marca d'água da sincronização CRM → banco (maior ID de empresa do CRM já processado) |
 | `crm_sync_pending` | Empresas do CRM que falharam no ETL e aguardam nova tentativa (com backoff) |
 | `carteira_empresas` | Relação de uma organização (`groups`) com cada empresa: `status` cliente/lead/perdido, `origem` crm/manual (`009_carteira.sql`). **É o que dá visibilidade**: empresa sem linha aqui é invisível pra todo usuário |
 | `crm_conexoes` | Conexão da organização com o CRM: token cifrado (nunca legível por `web_user`) + mapeamento de campos |
-| `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status (o incremental só deixa log se houve novidade ou erro) |
+| `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status (o incremental só deixa log se houve novidade ou erro). A carga inicial grava o progresso a cada 5 empresas (`total_estimado`, `total_processadas`; `017_progresso_sincronizacao.sql`, **a aplicar à mão em produção**, junto da limpeza de `nome_fantasia = ''`) |
+| `enriquecimento_cache` | Cache das fontes públicas dos detalhes (`018_enriquecimento_cache.sql`): `(fonte, chave)` → `dados` jsonb. Chave = CNPJ (Receita, compras, Google) ou código IBGE do município (comex, IBGE, compartilhado pela cidade). Só `crm_sync` acessa. **Em produção a `018` precisa ser aplicada à mão** |
 | `carteira_pendencias` | Fila de retentativas (com backoff) da sincronização por conexão — análoga à `crm_sync_pending`, mas com a conexão na chave (`011_carteira_pendencias.sql`) |
 
 ### RPCs (Stored Procedures)
@@ -246,7 +260,7 @@ A base de clientes é **da organização**: só quem é membro dela vê o que el
 
 1. **Banco** (`015_isolamento_organizacao.sql`): `companies`, `company_financial_profile`, `company_contacts` e `company_crm_sync` só são legíveis se `company_in_my_orgs(company_id)` — a empresa está na carteira de uma organização de que o usuário é membro. `web_user` não tem INSERT/UPDATE/DELETE nelas (escrita só pelas RPCs acima e pelo papel `crm_sync` do Backend, que enxerga tudo pra sincronizar).
 2. **Backend**: `/company-lookup` exige pertencer a alguma organização; `/crm` exige `group_id`, ser membro, o CNPJ estar na carteira dessa organização e a organização ser a dona do CRM global (`CRM_LEGACY_GROUP_ID`) — as demais ainda não têm notas/contatos (`AccessService`). O webhook de cadastro (`URL_WEBHOOK_CRM`) só recebe cadastros da organização `WEBHOOK_CRM_GROUP_ID` (build do app); vazio = ninguém.
-3. **App**: `OrganizationGate` só mostra as abas pra quem tem organização; sem ela, a tela de boas-vindas oferece **criar uma organização** (e abre o assistente de conexão do CRM em seguida) ou **entrar com o código de convite**. As buscas nem chamam o servidor sem organização ativa.
+3. **App**: `MainNavigation` só tem as abas Radar e Leads pra quem tem organização; sem ela existem apenas **Organização** (criar uma — e o assistente de conexão do CRM abre em seguida — ou entrar com o código de convite) e **Perfil**. Quem está em mais de uma organização troca a ativa pelo botão "Trocar" da aba Organização. As buscas nem chamam o servidor sem organização ativa.
 
 Testes: `make test-db` (`db/tests/isolation_test.sql`, num Postgres descartável: vários usuários e organizações) + os testes do backend e do app. **Mexeu em RLS, RPC de busca ou nas rotas do Backend? Rode `make test-db`.**
 
@@ -297,9 +311,18 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 
 O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada. O status da conexão o app lê direto pelo PostgREST (`crm_conexoes`, sem a coluna do token, e `sincronizacoes`) — **sempre com `select` explícito em `crm_conexoes`**: o GRANT por coluna faz o PostgREST negar `select=*`. A tela é `lib/features/carteira/`; `ApiClient.backendRequest` faz PUT/DELETE/query nas rotas do Backend e `ApiException` lê tanto `message` (PostgREST) quanto `detail` (FastAPI). Sem `CRM_TOKEN_ENCRYPTION_KEY` as rotas respondem 503. O handler de 422 omite o campo `input` do erro: ele traria o corpo inteiro, com o token.
 
-**Prioridade dos leads** (`priority_service.py`, `priority_score.py`, `logistic_score.py`, `cold_start_priority.py`) — o resultado é **calculado ao fim de cada sincronização que mudou a carteira** (ou quando ainda não há resultado) e **gravado**: `prioridade_modelos` (estratégia, tamanhos, modelo em jsonb) e `carteira_prioridade` (um lead por linha, já ordenado, com nota e motivos; `014_carteira_prioridade.sql`). `GET /carteira/prioridade?group_id=&limit=` (qualquer membro) só LÊ essas tabelas: nunca varre `companies` nem recalcula. Só o papel `crm_sync` tem acesso a elas.
+**Prioridade dos leads** (`priority_service.py`, `priority_score.py`, `logistic_score.py`, `cold_start_priority.py`) — o resultado é **calculado ao fim de cada sincronização que mudou a carteira** (ou quando ainda não há resultado) e **gravado**: `prioridade_modelos` (estratégia, tamanhos, modelo em jsonb) e `carteira_prioridade` (um lead por linha, já ordenado, com nota e motivos; `014_carteira_prioridade.sql`). `GET /carteira/prioridade?group_id=&limit=` (qualquer membro) só LÊ essas tabelas: nunca varre `companies` nem recalcula; `compacto=true` devolve só id/posição/nota (até 5.000 — o mapa usa pra colorir a carteira inteira). `GET /carteira/prioridade/empresa?group_id=&company_id=` explica UM lead: reaplica o modelo guardado (`prioridade_modelos.modelo`) à empresa e devolve todos os fatores (a favor, neutros e contra, com % dos clientes e da base) e as características sem dado. Só o papel `crm_sync` tem acesso a elas.
 - Estratégia pelo nº de clientes (`choose_strategy`): `< MIN_CLIENTS` (10) → **interação** (mais interações no CRM; empate pelo registro mais antigo; usa `crm_criado_em`/`num_interacoes` vindos de propriedades da empresa no HubSpot, `013_carteira_interacao.sql`); `>=` → **perfil** (baseline lookalike por razão de chances, naive Bayes com a priori na base). A regressão logística (`logistic_score.py`, numpy + L-BFGS próprio, sem scipy) existe e é avaliável, mas **ainda não está no seletor**: o limiar de troca deve sair de `model_comparison.learning_curve` com a carteira real.
 - O perfil lê a base `companies` (até 50.000 linhas) **a cada recálculo** (por sincronização, não por chamada). Desconectar com `apagar_carteira` apaga o resultado da organização.
+
+**Enriquecimento dos detalhes** (`backend/app/services/enrichment/`, rota `GET /enriquecimento/{fonte}?group_id=&cnpj=`) — exige ser membro e o CNPJ estar na carteira da organização (`AccessService`). Uma fonte por chamada, pro app carregar cada bloco no seu tempo; fonte fora do ar não é erro HTTP (volta `status: indisponivel`, ou o último dado guardado com `desatualizado: true`). Fontes, todas sem chave exceto o Google:
+- `receita` — BrasilAPI, com o Minha Receita (minhareceita.org) de reserva: situação, abertura, porte, capital, Simples/MEI, histórico de regime tributário, CNAEs e sócios. Cache de 7 dias.
+- `compras` — Compras.gov.br (dados abertos): SICAF e itens ganhos em licitações do PNCP (Lei 14.133), últimos 12 meses e os 12 anteriores (a API aceita no máximo 365 dias); detalhe das 5 maiores no PNCP (órgão, objeto, modalidade). Cache de 1 dia.
+- `comex` — Comex Stat (MDIC): exportação/importação do **município** no último ano fechado (produtos SH4 e países). Não há comércio exterior por CNPJ em API pública. Cache de 30 dias.
+- `municipio` — IBGE: população, PIB e PIB per capita. Cache de 30 dias.
+- `google` — Google Places (API New) com a `GEOCODING_API_KEY` (precisa da Places API ativada): foto de capa (com crédito do autor), nota, avaliações, telefone, site, horários. **Sob demanda e cobrado por consulta**: o app só chama quando a pessoa toca em "Ver no Google". **Termos do Google Maps: só o `place_id` fica guardado** (`enriquecimento_cache`, fonte `google_place_id`, 12 meses); nota, horários e foto são buscados a cada pedido (Place Details pelo id; busca por texto só na 1ª vez ou se o id deixar de existir). "Não encontrado" fica 7 dias, pra não repetir busca paga. A foto vem como link temporário do googleusercontent (sem a chave). `ENRICHMENT_GOOGLE_PLACES_ENABLED=false` desliga. "Aberto agora" é calculado no horário de Brasília.
+
+Migração nova com tabela/coluna? Termine com `NOTIFY pgrst, 'reload schema';` — senão o PostgREST não enxerga a mudança até reiniciar.
 
 Testes do backend: `backend/tests/` (pytest + respx, mockando as chamadas HTTP externas) — `cd backend && pip install -r requirements-dev.txt && pytest`.
 

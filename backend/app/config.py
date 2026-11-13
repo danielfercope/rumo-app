@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # app, que é restrita por referrer/app).
     geocoding_api_key: str = ""
 
+    # Google Places nos detalhes da empresa (foto, nota, avaliações, site,
+    # horários). Usa a mesma chave de servidor do Geocoding (a Places API (New)
+    # precisa estar ativada nela). Cobrado por consulta, e só quando a pessoa
+    # toca em "Ver no Google"; pelos termos do Google, só o place_id fica
+    # guardado. False desliga a fonte.
+    enrichment_google_places_enabled: bool = True
+
     # PostgREST dentro da rede do compose (sem passar pelo Caddy).
     postgrest_url: str = "http://postgrest:3000"
 

@@ -8,10 +8,12 @@ class TrackingService {
   final ApiClient _apiClient;
   Timer? _timer;
   bool _running = false;
+  String? _photoUrl;
 
   TrackingService(this._apiClient);
 
-  void startForUser(UserProfile profile) {
+  void startForUser(UserProfile profile, {String? photoUrl}) {
+    _photoUrl = photoUrl;
     if (_running) return;
     _running = true;
     _save(profile);
@@ -42,6 +44,7 @@ class TrackingService {
             'latitude': position.latitude,
             'longitude': position.longitude,
             'ultimo_visto': now,
+            if (_photoUrl != null) 'foto_url': _photoUrl,
           },
           onConflict: 'user_id',
         ),

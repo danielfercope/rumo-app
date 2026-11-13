@@ -2,6 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../groups/providers/group_provider.dart';
 import '../data/company_repository.dart';
 
+/// Raio da busca no mapa: de 1 a 100 km (mais que isso deixa de ser "perto"),
+/// com atalhos pros valores mais usados.
+const double minRadiusKm = 1;
+const double maxRadiusKm = 100;
+const List<double> radiusPresetsKm = [5, 10, 30, 100];
+
 class MapFilters {
   final String? segment;
   final String? product;
@@ -49,7 +55,7 @@ class MapFilters {
       // é descartada em vez de ficar "presa" a um estado diferente.
       city: clearCity ? null : (city ?? (stateChanged ? null : this.city)),
       cnae: clearCnae ? null : (cnae ?? this.cnae),
-      radius: radius ?? this.radius,
+      radius: (radius ?? this.radius).clamp(minRadiusKm, maxRadiusKm),
     );
   }
 

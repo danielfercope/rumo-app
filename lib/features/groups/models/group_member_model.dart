@@ -58,6 +58,9 @@ class TrackingPoint {
   final double longitude;
   final DateTime? ultimoVisto;
 
+  /// URL da foto da conta Google; `null` cai nas iniciais.
+  final String? fotoUrl;
+
   const TrackingPoint({
     required this.userId,
     required this.nome,
@@ -65,6 +68,7 @@ class TrackingPoint {
     required this.latitude,
     required this.longitude,
     this.ultimoVisto,
+    this.fotoUrl,
   });
 
   factory TrackingPoint.fromJson(Map<String, dynamic> json) => TrackingPoint(
@@ -75,6 +79,27 @@ class TrackingPoint {
         longitude: (json['longitude'] as num).toDouble(),
         ultimoVisto: json['ultimo_visto'] == null
             ? null
-            : DateTime.parse(json['ultimo_visto'] as String),
+            : DateTime.parse(json['ultimo_visto'] as String).toLocal(),
+        fotoUrl: json['foto_url'] as String?,
+      );
+}
+
+/// Uma posição do histórico de deslocamento de um membro (`tracking_history`).
+class TrackingHistoryPoint {
+  final double latitude;
+  final double longitude;
+  final DateTime capturedAt;
+
+  const TrackingHistoryPoint({
+    required this.latitude,
+    required this.longitude,
+    required this.capturedAt,
+  });
+
+  factory TrackingHistoryPoint.fromJson(Map<String, dynamic> json) =>
+      TrackingHistoryPoint(
+        latitude: (json['latitude'] as num).toDouble(),
+        longitude: (json['longitude'] as num).toDouble(),
+        capturedAt: DateTime.parse(json['captured_at'] as String).toLocal(),
       );
 }

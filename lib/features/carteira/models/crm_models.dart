@@ -148,6 +148,11 @@ class SyncLog {
   final String? erro;
   final DateTime iniciadaEm;
 
+  /// Progresso da carga inicial: quantas empresas já foram processadas e
+  /// quantas se espera processar (nulo = o servidor não conseguiu estimar).
+  final int processadas;
+  final int? estimado;
+
   const SyncLog({
     required this.tipo,
     required this.situacao,
@@ -157,7 +162,29 @@ class SyncLog {
     required this.falhas,
     required this.iniciadaEm,
     this.erro,
+    this.processadas = 0,
+    this.estimado,
   });
+
+  bool get emAndamento => situacao == 'em_andamento';
+
+  /// 0.0–1.0, ou nulo se não há estimativa (barra indeterminada).
+  double? get progresso {
+    final total = estimado;
+    if (total == null || total <= 0) return null;
+    return (processadas / total).clamp(0.0, 1.0);
+  }
+
+  /// Tempo restante estimado pelo ritmo da própria carga; nulo enquanto não há
+  /// dados suficientes pra projetar.
+  Duration? tempoRestante(DateTime agora) {
+    final total = estimado;
+    if (total == null || processadas < 5 || processadas >= total) return null;
+    final decorrido = agora.difference(iniciadaEm);
+    if (decorrido.inSeconds < 5) return null;
+    final porEmpresa = decorrido.inMilliseconds / processadas;
+    return Duration(milliseconds: (porEmpresa * (total - processadas)).round());
+  }
 
   factory SyncLog.fromJson(Map<String, dynamic> json) => SyncLog(
         tipo: json['tipo'] as String,
@@ -168,5 +195,7 @@ class SyncLog {
         falhas: json['total_falhas'] as int? ?? 0,
         erro: json['erro'] as String?,
         iniciadaEm: DateTime.parse(json['iniciada_em'] as String).toLocal(),
+        processadas: json['total_processadas'] as int? ?? 0,
+        estimado: json['total_estimado'] as int?,
       );
 }

@@ -19,6 +19,9 @@ import '../company/add_company_modal.dart';
 import 'presentation/filter_modal.dart';
 import 'presentation/company_details_modal.dart';
 import 'presentation/radar_viewmodel.dart';
+import 'models/lead_tier.dart';
+import 'providers/lead_tier_provider.dart';
+import 'widgets/lead_pin.dart';
 import 'widgets/osm_map.dart';
 import 'widgets/user_avatar.dart';
 import '../auth/providers/auth_provider.dart';
@@ -56,9 +59,10 @@ class _RadarPageState extends ConsumerState<RadarPage> {
 
   final LatLng _defaultCenter = const LatLng(-26.4843, -49.0717);
 
-  BitmapDescriptor? _iconLibria;
-  BitmapDescriptor? _iconSaveId;
-  BitmapDescriptor? _iconOtherClient;
+  // Cliente = símbolo da Save; lead = pino colorido pela prioridade.
+  static const double _clientIconSize = 38;
+  BitmapDescriptor? _iconClient;
+  final Map<LeadTier, BitmapDescriptor> _leadIcons = {};
 
   // Marcador da própria localização: foto do usuário ou as iniciais do nome.
   BitmapDescriptor? _iconMe;
@@ -121,20 +125,24 @@ class _RadarPageState extends ConsumerState<RadarPage> {
   }
 
   Future<void> _loadIcons() async {
-    const int targetWidth = 35;
     try {
-      final Uint8List libriaBytes =
-          await _getBytesFromAsset('assets/libria.png', targetWidth);
-      final Uint8List saveIdBytes =
-          await _getBytesFromAsset('assets/save_id.png', targetWidth);
-      final Uint8List otherClientBytes =
-          await _getBytesFromAsset('assets/icon_save.webp', targetWidth);
+      final clientBytes = await _getBytesFromAsset(
+          'assets/icon_save.webp', (_clientIconSize * 3).round());
+      final leadIcons = <LeadTier, BitmapDescriptor>{};
+      for (final tier in LeadTier.values) {
+        final size = leadPinSize(tier);
+        leadIcons[tier] = BitmapDescriptor.bytes(
+          await renderLeadPinPng(tier),
+          width: size.width,
+          height: size.height,
+        );
+      }
 
       if (mounted) {
         setState(() {
-          _iconLibria = BitmapDescriptor.bytes(libriaBytes);
-          _iconSaveId = BitmapDescriptor.bytes(saveIdBytes);
-          _iconOtherClient = BitmapDescriptor.bytes(otherClientBytes);
+          _iconClient = BitmapDescriptor.bytes(clientBytes,
+              width: _clientIconSize, height: _clientIconSize);
+          _leadIcons.addAll(leadIcons);
         });
       }
     } catch (e) {
@@ -142,35 +150,34 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     }
   }
 
-  BitmapDescriptor _getMarkerIcon(Company company) {
+  /// Faixa de prioridade do lead; sem nota calculada, vale "frio".
+  LeadTier _tierOf(Company company, Map<String, LeadTier> tiers) =>
+      tiers[company.id] ?? LeadTier.cold;
+
+  /// Ordem de empilhamento: cliente por cima, depois lead quente > morno > frio.
+  int _zIndexOf(Company company, Map<String, LeadTier> tiers) =>
+      company.isClient == true ? 3 : _tierOf(company, tiers).index;
+
+  BitmapDescriptor _getMarkerIcon(
+      Company company, Map<String, LeadTier> tiers) {
     if (company.isClient == true) {
-      if (company.produto == 'Libr.ia') {
-        return _iconLibria ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
-      } else if (company.produto == 'SaveID') {
-        return _iconSaveId ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
-      } else {
-        return _iconOtherClient ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
-      }
-    } else {
-      return BitmapDescriptor.defaultMarkerWithHue(200.0);
+      return _iconClient ??
+          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
     }
+    final tier = _tierOf(company, tiers);
+    return _leadIcons[tier] ??
+        BitmapDescriptor.defaultMarkerWithHue(switch (tier) {
+          LeadTier.hot => BitmapDescriptor.hueOrange,
+          LeadTier.warm => BitmapDescriptor.hueYellow,
+          LeadTier.cold => BitmapDescriptor.hueAzure,
+        });
   }
 
-  Widget _osmMarkerChild(Company company) {
-    final asset = company.isClient == true
-        ? switch (company.produto) {
-            'Libr.ia' => 'assets/libria.png',
-            'SaveID' => 'assets/save_id.png',
-            _ => 'assets/icon_save.webp',
-          }
-        : null;
-    if (asset != null) return Image.asset(asset, width: 35);
-    // Mesmo azul (hue 200) do pin padrão usado pro Google Maps.
-    return const Icon(CupertinoIcons.location_solid,
-        size: 35, color: Color(0xFF00AAFF));
+  Widget _osmMarkerChild(Company company, Map<String, LeadTier> tiers) {
+    if (company.isClient == true) {
+      return Image.asset('assets/icon_save.webp', width: _clientIconSize);
+    }
+    return LeadPin(_tierOf(company, tiers));
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -368,7 +375,9 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     ref.listen<bool>(shouldTrackProvider, (_, shouldTrack) {
       final profile = ref.read(profileProvider).value;
       if (shouldTrack && profile != null) {
-        ref.read(trackingServiceProvider).startForUser(profile);
+        ref
+            .read(trackingServiceProvider)
+            .startForUser(profile, photoUrl: ref.read(userPhotoUrlProvider));
       } else {
         ref.read(trackingServiceProvider).stop();
       }
@@ -420,6 +429,8 @@ class _RadarPageState extends ConsumerState<RadarPage> {
     final List<Company> sorted = List.from(companies)
       ..sort((a, b) => (a.distance ?? 999999).compareTo(b.distance ?? 999999));
     final displayCompanies = sorted.take(3).toList();
+
+    final tiers = ref.watch(leadTiersProvider).valueOrNull ?? const {};
 
     final mappableCompanies =
         sorted.where((c) => c.latitude != null && c.longitude != null).toList();
@@ -474,13 +485,17 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                   position: LatLng(company.latitude!, company.longitude!),
                   consumeTapEvents: true,
                   infoWindow: InfoWindow(
-                    title: company.fantasyName ?? company.name ?? 'Empresa',
+                    title: company.displayName,
                     snippet: company.segment ??
                         'CNAE: ${company.cnaePrincipal ?? "N/A"}',
                     onTap: () => _showCompanyDetails(company),
                   ),
                   onTap: () => _handleMarkerTap(company),
-                  icon: _getMarkerIcon(company),
+                  icon: _getMarkerIcon(company, tiers),
+                  anchor: company.isClient == true
+                      ? const Offset(0.5, 0.5)
+                      : const Offset(0.5, 1.0),
+                  zIndexInt: _zIndexOf(company, tiers),
                 );
               }),
               if (position != null)
@@ -528,15 +543,26 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                     size: 44,
                   ),
                 ),
-              for (final company in mappableCompanies)
+              // Os mais prioritários por último = desenhados por cima.
+              for (final company in [...mappableCompanies]..sort(
+                  (a, b) => _zIndexOf(a, tiers).compareTo(_zIndexOf(b, tiers))))
                 OsmMarkerData(
                   id: company.id,
                   position: ll.LatLng(company.latitude!, company.longitude!),
                   onTap: () => _handleMarkerTap(company),
-                  child: _osmMarkerChild(company),
+                  child: _osmMarkerChild(company, tiers),
+                  alignment: company.isClient == true
+                      ? Alignment.center
+                      : Alignment.topCenter,
+                  size: company.isClient == true
+                      ? _clientIconSize
+                      : leadPinSize(_tierOf(company, tiers)).height,
                 ),
             ],
           ),
+
+        // Legenda dos pinos
+        const Positioned(top: 60, left: 16, child: MapLegend()),
 
         // Controles: tipo de mapa, filtros, adicionar empresa, contador
         Positioned(
@@ -782,10 +808,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                  company.fantasyName ??
-                                      company.name ??
-                                      'Empresa',
+                              Text(company.displayName,
                                   style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 10,

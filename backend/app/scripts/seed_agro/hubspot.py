@@ -135,23 +135,20 @@ class HubSpotSeeder:
 
     # ─── Leitura do lote ────────────────────────────────────────────────
 
-    async def existing(self, lote: str) -> dict[str, dict]:
-        """cnpj → {id, lifecyclestage} das empresas já criadas neste lote."""
+    async def existing(self, lote: str | None) -> dict[str, dict]:
+        """cnpj → {id, lifecyclestage} das empresas já criadas neste lote.
+
+        Com `lote=None`, todas as empresas da conta que têm CNPJ preenchido."""
         found: dict[str, dict] = {}
         after: str | None = None
+        flt = (
+            {"propertyName": "rumo_seed_lote", "operator": "EQ", "value": lote}
+            if lote
+            else {"propertyName": "cnpj", "operator": "HAS_PROPERTY"}
+        )
         while True:
             body: dict = {
-                "filterGroups": [
-                    {
-                        "filters": [
-                            {
-                                "propertyName": "rumo_seed_lote",
-                                "operator": "EQ",
-                                "value": lote,
-                            }
-                        ]
-                    }
-                ],
+                "filterGroups": [{"filters": [flt]}],
                 "properties": ["cnpj", "lifecyclestage"],
                 "limit": BATCH,
             }
@@ -193,6 +190,20 @@ class HubSpotSeeder:
             for cnpj, status in targets.items()
             if cnpj in found
             and found[cnpj]["lifecyclestage"] != LIFECYCLE[status]
+        ]
+        for chunk in _chunks(updates, BATCH):
+            await self._request(
+                "POST",
+                "/crm/v3/objects/companies/batch/update",
+                json={"inputs": chunk},
+            )
+        return len(updates)
+
+    async def set_lifecycle(self, changes: dict[str, str]) -> int:
+        """id da empresa → valor do ciclo de vida do HubSpot (ex.: "customer")."""
+        updates = [
+            {"id": i, "properties": {"lifecyclestage": stage}}
+            for i, stage in changes.items()
         ]
         for chunk in _chunks(updates, BATCH):
             await self._request(

@@ -23,7 +23,7 @@ from ..errors import NotGroupMemberError
 from .cold_start_priority import rank_by_interaction
 from .cold_start_priority import reason as interaction_reason
 from .postgrest_client import PostgrestClient
-from .priority_score import MIN_CLIENTS, fit, percentile_scores
+from .priority_score import MIN_CLIENTS, PriorityModel, fit, percentile_scores
 
 logger = logging.getLogger("uvicorn.error.priority")
 
@@ -34,11 +34,17 @@ UNIVERSE_MAX_ROWS = 50_000
 WRITE_CHUNK = 500
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+# Modo compacto (só id, posição e nota — o mapa precisa da carteira inteira).
+MAX_LIMIT_COMPACT = 5000
 
 COMPANY_COLUMNS = (
     "id,cnpj,razao_social,nome_fantasia,segmento,cnae_principal,"
     "natureza_juridica,porte,uf,municipio,data_abertura"
 )
+
+# Contribuição (média ponderada de log da razão de chances) a partir da qual um
+# fator conta como "a favor" ou "contra"; entre os dois é neutro.
+EFFECT_THRESHOLD = 0.1
 
 STRATEGY_INTERACTION = "interacao"
 STRATEGY_PROFILE = "perfil"
@@ -56,10 +62,14 @@ class PriorityService:
     # ─── Leitura (a cada requisição) ────────────────────────────────────
 
     async def ranking(
-        self, uid: str, group_id: str, limit: int = DEFAULT_LIMIT
+        self,
+        uid: str,
+        group_id: str,
+        limit: int = DEFAULT_LIMIT,
+        compact: bool = False,
     ) -> dict:
         await self._require_member(uid, group_id)
-        limit = max(1, min(limit, MAX_LIMIT))
+        limit = max(1, min(limit, MAX_LIMIT_COMPACT if compact else MAX_LIMIT))
 
         meta = await self._db.select(
             "prioridade_modelos",
@@ -85,7 +95,9 @@ class PriorityService:
             "carteira_prioridade",
             {
                 "group_id": f"eq.{group_id}",
-                "select": "company_id,posicao,nota,motivos,"
+                "select": "company_id,posicao,nota"
+                if compact
+                else "company_id,posicao,nota,motivos,"
                 "companies(cnpj,razao_social,nome_fantasia,municipio,uf)",
                 "order": "posicao.asc",
                 "limit": str(limit),
@@ -98,6 +110,72 @@ class PriorityService:
         }
 
     # ─── Cálculo (ao fim de cada sincronização que mudou a carteira) ────
+
+    async def explain(self, uid: str, group_id: str, company_id: str) -> dict:
+        """Por que ESTE lead tem esta nota: todos os fatores, a favor e contra.
+
+        Só lê o que já está gravado: a linha do lead, o modelo da organização
+        (contagens) e a própria empresa. Reaplica o modelo a uma única empresa,
+        o que é instantâneo e não varre `companies`."""
+        await self._require_member(uid, group_id)
+        rows = await self._db.select(
+            "carteira_prioridade",
+            {
+                "group_id": f"eq.{group_id}",
+                "company_id": f"eq.{company_id}",
+                "select": "posicao,nota,motivos",
+                "limit": "1",
+            },
+        )
+        meta = await self._db.select(
+            "prioridade_modelos",
+            {
+                "group_id": f"eq.{group_id}",
+                "select": "estrategia,n_clientes,n_leads,modelo,calculado_em",
+                "limit": "1",
+            },
+        )
+        if not rows or not meta:
+            return {"disponivel": False}
+        row, meta = rows[0], meta[0]
+        out: dict = {
+            "disponivel": True,
+            "estrategia": meta["estrategia"],
+            "posicao": row["posicao"],
+            "nota": row["nota"],
+            "total_leads": meta["n_leads"],
+            "n_clientes": meta["n_clientes"],
+            "calculado_em": meta["calculado_em"],
+            "motivos": row["motivos"],
+            "fatores": [],
+            "sem_dado": [],
+            "sinais": None,
+            "confiavel": True,
+        }
+
+        if meta["estrategia"] == STRATEGY_PROFILE and meta.get("modelo"):
+            companies = await self._db.select(
+                "companies",
+                {"id": f"eq.{company_id}", "select": COMPANY_COLUMNS, "limit": "1"},
+            )
+            if companies:
+                model = PriorityModel.from_json(meta["modelo"])
+                out["confiavel"] = model.reliable
+                out["fatores"], out["sem_dado"] = _factors(
+                    model, companies[0], meta["n_clientes"]
+                )
+        else:
+            signals = await self._db.select(
+                "carteira_empresas",
+                {
+                    "group_id": f"eq.{group_id}",
+                    "company_id": f"eq.{company_id}",
+                    "select": "crm_criado_em,ultima_interacao_em,num_interacoes",
+                    "limit": "1",
+                },
+            )
+            out["sinais"] = signals[0] if signals else None
+        return out
 
     async def has_result(self, group_id: str) -> bool:
         rows = await self._db.select(
@@ -226,7 +304,7 @@ class PriorityService:
             "municipio": company.get("municipio"),
             "uf": company.get("uf"),
             "nota": row["nota"],
-            "motivos": row["motivos"],
+            "motivos": row.get("motivos") or [],
         }
 
     async def _require_member(self, uid: str, group_id: str) -> None:
@@ -259,3 +337,50 @@ def _describe(reason) -> str:
         f"({reason.share_clients:.0%} dos seus clientes, "
         f"{reason.share_base:.0%} da base)"
     )
+
+
+def _pretty(key: str, value: str) -> str:
+    """Valor do fator pra exibição (o modelo guarda tudo em minúsculas)."""
+    if key == "municipio" and "/" in value:
+        uf, cidade = value.split("/", 1)
+        return f"{cidade.title()} ({uf.upper()})"
+    if key == "uf":
+        return value.upper()
+    return value[:1].upper() + value[1:]
+
+
+def _factors(
+    model: PriorityModel, company: dict, n_clients: int
+) -> tuple[list[dict], list[str]]:
+    """(fatores, características sem dado). Fatores do que mais ajuda ao que
+    mais atrapalha; característica sem dado não pune nem premia."""
+    scored = model.score(company)
+    weight = {f.key: f.weight for f in model.features}
+    fatores = []
+    for r in scored.reasons:
+        effect = (
+            "favorece"
+            if r.contribution > EFFECT_THRESHOLD
+            else "desfavorece"
+            if r.contribution < -EFFECT_THRESHOLD
+            else "neutro"
+        )
+        fatores.append(
+            {
+                "chave": r.feature,
+                "campo": r.label,
+                "valor": _pretty(r.feature, r.value),
+                "efeito": effect,
+                "contribuicao": round(r.contribution, 3),
+                "peso": weight.get(r.feature),
+                "pct_clientes": round(r.share_clients, 4),
+                "pct_base": round(r.share_base, 4),
+                "clientes_com_valor": round(r.share_clients * n_clients),
+                "vezes": round(r.share_clients / r.share_base, 2)
+                if r.share_base
+                else None,
+            }
+        )
+    fatores.sort(key=lambda f: f["contribuicao"], reverse=True)
+    sem_dado = [f.label for f in model.features if f.extract(company) is None]
+    return fatores, sem_dado

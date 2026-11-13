@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:rumo_app/features/auth/providers/auth_provider.dart';
 import 'package:rumo_app/core/services/api_client.dart';
 import 'package:rumo_app/features/auth/providers/profile_provider.dart';
 import 'package:rumo_app/features/company/add_company_modal.dart';
@@ -102,7 +103,8 @@ void main() {
     when(() => crm.getNotesWithOwners(any())).thenAnswer((_) async => []);
     when(() => crm.getContacts(any())).thenAnswer((_) async => []);
     tracking = MockTrackingService();
-    when(() => tracking.startForUser(any())).thenReturn(null);
+    when(() => tracking.startForUser(any(), photoUrl: any(named: 'photoUrl')))
+        .thenReturn(null);
     when(() => tracking.stop()).thenReturn(null);
   });
 
@@ -131,6 +133,7 @@ void main() {
           )),
       crmServiceProvider.overrideWithValue(crm),
       trackingServiceProvider.overrideWithValue(tracking),
+      userPhotoUrlProvider.overrideWithValue(null),
       apiClientProvider.overrideWithValue(ApiClient(baseUrl: 'http://x')),
     ]);
     addTearDown(container.dispose);
@@ -466,7 +469,9 @@ void main() {
         (tester) async {
       await pumpRadar(tester, profile: _profile(), shouldTrack: true);
       await tester.pump();
-      verify(() => tracking.startForUser(any())).called(1);
+      verify(() =>
+              tracking.startForUser(any(), photoUrl: any(named: 'photoUrl')))
+          .called(1);
       await finish(tester);
     });
 
@@ -474,7 +479,8 @@ void main() {
         (tester) async {
       await pumpRadar(tester, profile: _profile());
       await tester.pump();
-      verifyNever(() => tracking.startForUser(any()));
+      verifyNever(
+          () => tracking.startForUser(any(), photoUrl: any(named: 'photoUrl')));
       await finish(tester);
     });
   });

@@ -78,6 +78,35 @@ void main() {
     expect(history['longitude'], -49.1);
   });
 
+  test('envia a URL da foto junto da posição (não vai pro histórico)',
+      () async {
+    service.startForUser(_profile, photoUrl: 'https://x/ana.jpg');
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    final upsert = verify(() =>
+            api.upsert('tracking_equipe', captureAny(), onConflict: 'user_id'))
+        .captured
+        .single as Map<String, dynamic>;
+    expect(upsert['foto_url'], 'https://x/ana.jpg');
+    final history = verify(() => api.post('tracking_history', captureAny()))
+        .captured
+        .single as Map<String, dynamic>;
+    expect(history.containsKey('foto_url'), isFalse);
+  });
+
+  test('sem foto, não manda foto_url (não apaga a que já existe)', () async {
+    service.startForUser(_profile);
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    final upsert = verify(() =>
+            api.upsert('tracking_equipe', captureAny(), onConflict: 'user_id'))
+        .captured
+        .single as Map<String, dynamic>;
+    expect(upsert.containsKey('foto_url'), isFalse);
+  });
+
   test('chamar startForUser duas vezes não duplica o rastreamento', () async {
     service.startForUser(_profile);
     service.startForUser(_profile);

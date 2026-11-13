@@ -176,6 +176,32 @@ void main() {
     expect(points.first.latitude, -26.5);
   });
 
+  test('listTrackingHistory manda o período em UTC e mapeia os pontos',
+      () async {
+    when(() => mockApiClient.rpc('list_group_tracking_history', any()))
+        .thenAnswer((_) async => [
+              {
+                'latitude': -26.5,
+                'longitude': -49.0,
+                'captured_at': '2026-11-10T12:00:00Z',
+              },
+            ]);
+    final from = DateTime.utc(2026, 11, 10);
+    final to = DateTime.utc(2026, 11, 11);
+
+    final points = await service.listTrackingHistory('g1', 'u1', from, to);
+
+    expect(points, hasLength(1));
+    expect(points.first.longitude, -49.0);
+    expect(points.first.capturedAt.isUtc, isFalse);
+    verify(() => mockApiClient.rpc('list_group_tracking_history', {
+          'p_group_id': 'g1',
+          'p_user_id': 'u1',
+          'p_from': '2026-11-10T00:00:00.000Z',
+          'p_to': '2026-11-11T00:00:00.000Z',
+        })).called(1);
+  });
+
   test(
       'listMyGroups chama GET group_members com embed de groups sem invite_hash',
       () async {
