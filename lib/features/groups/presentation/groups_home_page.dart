@@ -14,7 +14,7 @@ class GroupsHomePage extends ConsumerWidget {
 
     return CupertinoPageScaffold(
       backgroundColor: CupertinoColors.systemGroupedBackground,
-      navigationBar: const CupertinoNavigationBar(middle: Text('Equipe')),
+      navigationBar: const CupertinoNavigationBar(middle: Text('Organização')),
       child: SafeArea(
         child: groupsAsync.when(
           data: (groups) => groups.isEmpty
@@ -27,7 +27,7 @@ class GroupsHomePage extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Não foi possível carregar os grupos',
+                  const Text('Não foi possível carregar sua organização',
                       style:
                           TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),

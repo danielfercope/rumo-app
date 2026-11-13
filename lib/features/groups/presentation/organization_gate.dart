@@ -3,11 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../carteira/presentation/crm_connection_wizard.dart';
 import '../providers/group_provider.dart';
-import 'organization_onboarding_page.dart';
 
-/// Porta de entrada do app: só quem pertence a uma organização chega às abas
-/// (Radar, Leads, Perfil, Equipe). Sem organização, só a tela de boas-vindas
-/// (criar uma ou entrar com um código).
+/// Espera saber a quais organizações o usuário pertence antes de montar o app.
+/// Quem decide as abas é o `MainNavigation`: sem organização só existem Perfil
+/// e Organização (criar uma ou entrar com um código); Radar e Leads só com ela.
 ///
 /// É a barreira da interface; a de verdade fica no servidor (RLS + RPCs), que
 /// recusa busca e leitura de quem não é membro mesmo que o app seja burlado.
@@ -53,9 +52,7 @@ class OrganizationGate extends ConsumerWidget {
           ),
         ),
       ),
-      data: (list) => list.isEmpty
-          ? const OrganizationOnboardingPage()
-          : _OpenCrmSetupOnce(child: child),
+      data: (_) => _OpenCrmSetupOnce(child: child),
     );
   }
 }

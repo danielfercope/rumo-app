@@ -10,7 +10,9 @@ import 'package:rumo_app/features/carteira/services/carteira_service.dart';
 import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/models/group_model.dart';
 import 'package:rumo_app/features/groups/presentation/organization_gate.dart';
-import 'package:rumo_app/features/groups/presentation/organization_onboarding_page.dart';
+import 'package:rumo_app/features/groups/presentation/group_onboarding_view.dart';
+import 'package:rumo_app/features/groups/presentation/groups_home_page.dart';
+import 'package:rumo_app/main.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/groups/services/group_service.dart';
 
@@ -61,6 +63,7 @@ void main() {
     groups = [];
     appMounts = 0;
     when(() => auth.signOut()).thenAnswer((_) async {});
+    when(() => service.listMembers(any())).thenAnswer((_) async => []);
     when(() => carteira.buscarConexao(any())).thenAnswer((_) async => null);
     when(() => carteira.ultimaSincronizacao(any()))
         .thenAnswer((_) async => null);
@@ -69,6 +72,7 @@ void main() {
   Future<ProviderContainer> pump(
     WidgetTester tester, {
     Future<List<MyGroup>> Function()? loader,
+    Widget? child,
   }) async {
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1;
@@ -86,7 +90,7 @@ void main() {
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
       child: CupertinoApp(
-        home: OrganizationGate(child: _AppProbe(() => appMounts++)),
+        home: OrganizationGate(child: child ?? _AppProbe(() => appMounts++)),
       ),
     ));
     await tester.pump();
@@ -94,19 +98,8 @@ void main() {
     return container;
   }
 
-  group('quem não tem organização não chega ao app', () {
-    testWidgets('sem organização só vê a tela de boas-vindas', (tester) async {
-      await pump(tester);
-
-      expect(find.byType(OrganizationOnboardingPage), findsOneWidget);
-      expect(find.text('Criar organização'), findsOneWidget);
-      expect(find.text('Entrar na organização'), findsOneWidget);
-      expect(find.text('APP'), findsNothing);
-      expect(appMounts, 0, reason: 'o app (mapa, buscas) nem pode ser montado');
-    });
-
-    testWidgets('enquanto carrega a lista, o app também não aparece',
-        (tester) async {
+  group('o app só monta depois de saber as organizações', () {
+    testWidgets('enquanto carrega a lista, o app não aparece', (tester) async {
       await pump(tester, loader: () => Completer<List<MyGroup>>().future);
 
       expect(find.byType(CupertinoActivityIndicator), findsOneWidget);
@@ -134,17 +127,8 @@ void main() {
       expect(find.text('APP'), findsOneWidget);
     });
 
-    testWidgets('quem tem organização entra no app', (tester) async {
-      groups = [fakeMyGroup()];
-      await pump(tester);
-
-      expect(find.text('APP'), findsOneWidget);
-      expect(find.byType(OrganizationOnboardingPage), findsNothing);
-    });
-
     testWidgets('recarregar a lista não desmonta o app (perderia o estado)',
         (tester) async {
-      groups = [fakeMyGroup()];
       final lento = Completer<List<MyGroup>>();
       var primeira = true;
       final container = await pump(tester, loader: () {
@@ -167,29 +151,29 @@ void main() {
       await tester.pump();
       expect(appMounts, 1, reason: 'o app não pode ser remontado');
     });
+  });
 
-    testWidgets('sair da conta é possível mesmo sem organização',
-        (tester) async {
-      await pump(tester);
-
-      await tester.tap(find.text('Sair'));
-      await tester.pumpAndSettle();
-      expect(find.text('Sair da conta'), findsOneWidget);
-      await tester.tap(find.widgetWithText(CupertinoDialogAction, 'Sair'));
-      await tester.pumpAndSettle();
-
-      verify(() => auth.signOut()).called(1);
+  group('abas por situação do usuário', () {
+    test('sem organização: só Organização e Perfil', () {
+      expect(mainTabLabels(hasOrganization: false), ['Organização', 'Perfil']);
     });
 
-    testWidgets('cancelar a saída não sai da conta', (tester) async {
-      await pump(tester);
+    test('com organização: Radar, Leads, Perfil e Organização', () {
+      expect(mainTabLabels(hasOrganization: true),
+          ['Radar', 'Leads', 'Perfil', 'Organização']);
+    });
 
-      await tester.tap(find.text('Sair'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancelar'));
-      await tester.pumpAndSettle();
+    testWidgets('sem organização a barra não tem Radar nem Leads',
+        (tester) async {
+      await pump(tester, child: const MainNavigation());
 
-      verifyNever(() => auth.signOut());
+      expect(find.text('Radar'), findsNothing);
+      expect(find.text('Leads'), findsNothing);
+      expect(find.text('Perfil'), findsOneWidget);
+      expect(find.text('Organização'), findsWidgets);
+      expect(find.byType(GroupOnboardingView), findsOneWidget);
+      expect(find.text('Criar organização'), findsOneWidget);
+      expect(find.text('Entrar na organização'), findsOneWidget);
     });
   });
 
@@ -202,13 +186,12 @@ void main() {
           createdAt: DateTime(2026, 1, 1),
         );
 
-    testWidgets('criar: entra no app e abre o assistente pra conectar o CRM',
-        (tester) async {
+    testWidgets('criar: abre o assistente pra conectar o CRM', (tester) async {
       when(() => service.createGroup('Agro Sul')).thenAnswer((_) async {
         groups = [fakeMyGroup(id: 'g-nova')];
         return novo('g-nova');
       });
-      final container = await pump(tester);
+      final container = await pump(tester, child: const GroupsHomePage());
 
       await tester.enterText(
           find.widgetWithText(CupertinoTextField, 'Nome da organização'),
@@ -217,8 +200,7 @@ void main() {
       await tester.pumpAndSettle();
 
       verify(() => service.createGroup('Agro Sul')).called(1);
-      expect(find.byType(OrganizationOnboardingPage), findsNothing);
-      expect(appMounts, 1);
+      expect(find.byType(GroupOnboardingView), findsNothing);
       expect(find.text('Conectar CRM · 1 de 3'), findsOneWidget,
           reason: 'logo após criar, o assistente do CRM abre');
       expect(container.read(pendingCrmSetupGroupIdProvider), isNull,
@@ -231,7 +213,7 @@ void main() {
         groups = [fakeMyGroup(id: 'g-nova')];
         return novo('g-nova');
       });
-      final container = await pump(tester);
+      final container = await pump(tester, child: const GroupsHomePage());
       await tester.enterText(
           find.widgetWithText(CupertinoTextField, 'Nome da organização'), 'X');
       await tester.tap(find.text('Criar organização'));
@@ -244,16 +226,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Conectar CRM · 1 de 3'), findsNothing);
-      expect(find.text('APP'), findsOneWidget);
     });
 
-    testWidgets('entrar com código: vai pro app, sem abrir o assistente do CRM',
+    testWidgets('entrar com código: não abre o assistente do CRM',
         (tester) async {
       when(() => service.joinByHash('CODIGO')).thenAnswer((_) async {
         groups = [fakeMyGroup(id: 'g-existente', role: 'member')];
         return novo('g-existente');
       });
-      final container = await pump(tester);
+      final container = await pump(tester, child: const GroupsHomePage());
 
       await tester.enterText(
           find.widgetWithText(
@@ -263,17 +244,16 @@ void main() {
       await tester.pumpAndSettle();
 
       verify(() => service.joinByHash('CODIGO')).called(1);
-      expect(find.text('APP'), findsOneWidget);
+      expect(find.byType(GroupOnboardingView), findsNothing);
       expect(find.text('Conectar CRM · 1 de 3'), findsNothing,
           reason: 'quem entra numa existente não conecta CRM (já é da org)');
       expect(container.read(pendingCrmSetupGroupIdProvider), isNull);
     });
 
-    testWidgets('código inválido: continua sem organização e sem app',
-        (tester) async {
+    testWidgets('código inválido: continua sem organização', (tester) async {
       when(() => service.joinByHash(any()))
           .thenThrow(Exception('convite inválido'));
-      await pump(tester);
+      await pump(tester, child: const GroupsHomePage());
 
       await tester.enterText(
           find.widgetWithText(
@@ -283,8 +263,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('convite inválido'), findsOneWidget);
-      expect(find.text('APP'), findsNothing);
-      expect(appMounts, 0);
+      expect(find.byType(GroupOnboardingView), findsOneWidget);
     });
   });
 }
