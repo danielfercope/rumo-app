@@ -104,30 +104,15 @@ class GroupManagementView extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 12),
       children: [
-        if (myGroups.length > 1)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: CupertinoSlidingSegmentedControl<String>(
-              groupValue: group.id,
-              children: {
-                for (final g in myGroups)
-                  g.group.id: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(g.group.name, overflow: TextOverflow.ellipsis),
-                  ),
-              },
-              onValueChanged: (id) {
-                if (id != null) {
-                  ref.read(activeGroupIdProvider.notifier).state = id;
-                }
-              },
-            ),
-          ),
         _GroupHeader(
           name: group.name,
           isAdmin: isAdmin,
           memberCount: membersAsync.valueOrNull?.length,
+          onSwitch: myGroups.length > 1
+              ? () => _pickGroup(context, ref, myGroups, group.id)
+              : null,
         ),
+        const _PrivacyNote(),
         CupertinoListSection.insetGrouped(
           header: const Text('Membros'),
           children: membersAsync.when(
@@ -212,6 +197,29 @@ class GroupManagementView extends ConsumerWidget {
     );
   }
 
+  Future<void> _pickGroup(BuildContext context, WidgetRef ref,
+      List<MyGroup> groups, String activeId) async {
+    final id = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('Trocar de organização'),
+        actions: [
+          for (final g in groups)
+            CupertinoActionSheetAction(
+              isDefaultAction: g.group.id == activeId,
+              onPressed: () => Navigator.pop(ctx, g.group.id),
+              child: Text(g.group.name),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancelar'),
+        ),
+      ),
+    );
+    if (id != null) ref.read(activeGroupIdProvider.notifier).state = id;
+  }
+
   Future<void> _pickRoleAction(
     BuildContext context,
     GroupMember m,
@@ -244,11 +252,15 @@ class _GroupHeader extends StatelessWidget {
     required this.name,
     required this.isAdmin,
     required this.memberCount,
+    this.onSwitch,
   });
 
   final String name;
   final bool isAdmin;
   final int? memberCount;
+
+  /// Só quando o usuário está em mais de uma organização.
+  final VoidCallback? onSwitch;
 
   @override
   Widget build(BuildContext context) {
@@ -257,13 +269,19 @@ class _GroupHeader extends StatelessWidget {
         memberCount == 1 ? '1 membro' : '$memberCount membros',
       if (isAdmin) 'Você administra',
     ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: CupertinoColors.secondarySystemGroupedBackground
+            .resolveFrom(context),
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               color: CupertinoColors.systemBlue,
               borderRadius: BorderRadius.circular(14),
@@ -272,7 +290,7 @@ class _GroupHeader extends StatelessWidget {
             child: Text(_initial(name),
                 style: const TextStyle(
                     color: CupertinoColors.white,
-                    fontSize: 24,
+                    fontSize: 26,
                     fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 14),
@@ -280,6 +298,13 @@ class _GroupHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('SUA ORGANIZAÇÃO',
+                    style: TextStyle(
+                        fontSize: 11,
+                        letterSpacing: 0.6,
+                        fontWeight: FontWeight.w600,
+                        color: CupertinoColors.systemGrey)),
+                const SizedBox(height: 2),
                 Text(name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -292,10 +317,44 @@ class _GroupHeader extends StatelessWidget {
               ],
             ),
           ),
+          if (onSwitch != null)
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(32, 32),
+              onPressed: onSwitch,
+              child: const Text('Trocar'),
+            ),
         ],
       ),
     );
   }
+}
+
+/// Deixa explícito que a carteira é exclusiva da organização.
+class _PrivacyNote extends StatelessWidget {
+  const _PrivacyNote();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.fromLTRB(32, 0, 32, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(CupertinoIcons.lock_fill,
+                size: 14, color: CupertinoColors.systemGrey),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Os clientes e leads do Radar e da aba Leads pertencem só a '
+                'esta organização. Outras organizações não os enxergam, e você '
+                'não vê os delas.',
+                style:
+                    TextStyle(fontSize: 13, color: CupertinoColors.systemGrey),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 String _initial(String name) {

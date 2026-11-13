@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # precisam reconectar); trocá-la idem.
     crm_token_encryption_key: str = ""
 
+    # Organização dona do CRM global (CRM_TOKEN): as rotas /crm (notas e contatos
+    # lidos e gravados nessa conta) só atendem a ela. Vazio = ninguém. As demais
+    # organizações têm o próprio CRM em crm_conexoes e, por ora, não usam /crm.
+    crm_legacy_group_id: str = ""
+
     # Chave de SERVIDOR da Google Geocoding API (distinta da chave do Maps no
     # app, que é restrita por referrer/app).
     geocoding_api_key: str = ""

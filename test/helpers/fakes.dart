@@ -86,8 +86,11 @@ class FakeCompanyRepository implements ICompanyRepository {
     return companies;
   }
 
+  int optionsCalls = 0;
+
   @override
   Future<Map<String, dynamic>> getFilterOptions() async {
+    optionsCalls++;
     if (error != null) throw error!;
     return options;
   }

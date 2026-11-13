@@ -13,6 +13,9 @@ final companiesProvider = FutureProvider<List<Company>>((ref) async {
   final filters = ref.watch(mapFiltersProvider);
   final groupId = ref.watch(activeGroupProvider)?.group.id;
 
+  // Sem organização não há base: nem chama o servidor.
+  if (groupId == null) return [];
+
   final position = locationAsync.value;
   if (position == null) return [];
 

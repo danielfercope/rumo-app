@@ -7,6 +7,7 @@ import 'package:rumo_app/features/map/providers/company_provider.dart';
 import 'package:rumo_app/features/map/providers/filter_provider.dart';
 import 'package:rumo_app/features/map/providers/location_provider.dart';
 
+import '../../../helpers/active_group.dart';
 import '../../../helpers/fakes.dart';
 
 Position _pos(double lat, double lon) => Position(
@@ -28,6 +29,7 @@ void main() {
     final repo = FakeCompanyRepository(companies: [buildCompany()]);
     final container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),
+      activeGroupOverride(),
       locationProvider.overrideWith((ref) async => _pos(-26.1, -49.2)),
     ]);
     addTearDown(container.dispose);
@@ -39,6 +41,24 @@ void main() {
     expect(result, hasLength(1));
     expect(repo.lastLat, -26.1);
     expect(repo.lastFilters?.segment, 'Varejo');
+    expect(repo.lastGroupId, 'g1',
+        reason: 'a busca é sempre da organização ativa');
+  });
+
+  test('sem organização ativa nem chama o servidor (não há base)', () async {
+    final repo = FakeCompanyRepository(companies: [buildCompany()]);
+    final container = ProviderContainer(overrides: [
+      companyRepositoryProvider.overrideWithValue(repo),
+      noActiveGroupOverride(),
+      locationProvider.overrideWith((ref) async => _pos(-26.1, -49.2)),
+    ]);
+    addTearDown(container.dispose);
+
+    await container.read(locationProvider.future);
+
+    expect(await container.read(companiesProvider.future), isEmpty);
+    expect(repo.lastLat, isNull,
+        reason: 'o repositório não pode ser consultado');
   });
 
   test('companiesProvider devolve lista vazia enquanto a posição não chegou',
@@ -46,6 +66,7 @@ void main() {
     final repo = FakeCompanyRepository(companies: [buildCompany()]);
     final container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),
+      activeGroupOverride(),
       locationProvider.overrideWith((ref) => Completer<Position>().future),
     ]);
     addTearDown(container.dispose);

@@ -57,6 +57,7 @@ services:
       CRM_CONNECTIONS_SYNC_ENABLED: ${CRM_CONNECTIONS_SYNC_ENABLED:-false}
       CRM_TOKEN_ENCRYPTION_KEY: ${CRM_TOKEN_ENCRYPTION_KEY:-}
       GEOCODING_API_KEY: ${GEOCODING_API_KEY:-}
+      CRM_LEGACY_GROUP_ID: ${CRM_LEGACY_GROUP_ID:-}
     volumes:
       - ./infra/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
     ports:

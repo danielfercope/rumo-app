@@ -8,8 +8,10 @@ from fastapi.responses import JSONResponse
 
 from .errors import (
     CnpjNotFoundError,
+    CompanyNotInPortfolioError,
     ConnectionNotFoundError,
     CrmCompanyNotFoundError,
+    CrmNotAvailableError,
     InvalidCrmTokenError,
     InvalidMappingError,
     NotGroupAdminError,
@@ -27,6 +29,7 @@ from .schemas import (
     CrmRequest,
     PreviaCarteiraRequest,
 )
+from .services.access_service import AccessService
 from .services.auth_service import AuthService
 from .services.company_lookup_service import CompanyLookupService
 from .services.carteira_connection_service import CarteiraConnectionService
@@ -45,6 +48,7 @@ company_lookup_service = CompanyLookupService()
 crm_service = CrmService()
 geocoding_service = GeocodingService()
 postgrest_client = PostgrestClient()
+access_service = AccessService(postgrest_client)
 priority_service = PriorityService(postgrest_client)
 crm_sync_service = CrmSyncService(
     crm_service, company_lookup_service, geocoding_service, postgrest_client
@@ -157,7 +161,11 @@ async def company_lookup(
     payload: CompanyLookupRequest, uid: str = Depends(current_uid)
 ) -> dict:
     try:
+        # sem organização não há consulta: o recurso é pra cadastrar na carteira de uma
+        await access_service.require_any_organization(uid)
         return await company_lookup_service.lookup_cnpj(payload.cnpj)
+    except NotGroupMemberError as exc:
+        raise HTTPException(403, str(exc)) from exc
     except CnpjNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     except UpstreamIntegrationError as exc:
@@ -167,8 +175,18 @@ async def company_lookup(
 @app.post("/crm")
 async def crm(payload: CrmRequest, uid: str = Depends(current_uid)) -> dict:
     try:
+        # 1) membro da organização; 2) o CNPJ está na carteira DELA; 3) a conta
+        # global de CRM só atende a organização dona dela.
+        await access_service.require_member(uid, payload.group_id)
+        await access_service.require_cnpj_in_portfolio(payload.group_id, payload.cnpj)
+        if not settings.crm_legacy_group_id or payload.group_id != settings.crm_legacy_group_id:
+            raise CrmNotAvailableError(
+                "Notas e contatos do CRM ainda não estão disponíveis para esta organização."
+            )
         return await crm_service.handle(payload)
-    except CrmCompanyNotFoundError as exc:
+    except (NotGroupMemberError, CrmNotAvailableError) as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except (CompanyNotInPortfolioError, CrmCompanyNotFoundError) as exc:
         raise HTTPException(404, str(exc)) from exc
     except UpstreamIntegrationError as exc:
         raise HTTPException(502, str(exc)) from exc

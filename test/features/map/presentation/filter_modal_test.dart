@@ -5,6 +5,7 @@ import 'package:rumo_app/features/map/presentation/filter_modal.dart';
 import 'package:rumo_app/features/map/providers/company_provider.dart';
 import 'package:rumo_app/features/map/providers/filter_provider.dart';
 
+import '../../../helpers/active_group.dart';
 import '../../../helpers/fakes.dart';
 
 void main() {
@@ -31,6 +32,7 @@ void main() {
     addTearDown(tester.view.reset);
     container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),
+      activeGroupOverride(),
     ]);
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
@@ -138,6 +140,7 @@ void main() {
   testWidgets('"Limpar Todos" zera os filtros temporários', (tester) async {
     container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),
+      activeGroupOverride(),
     ]);
     addTearDown(container.dispose);
     container.read(mapFiltersProvider.notifier)

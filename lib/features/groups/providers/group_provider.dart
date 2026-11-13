@@ -19,6 +19,10 @@ final myGroupsProvider = FutureProvider<List<MyGroup>>((ref) async {
 
 final activeGroupIdProvider = StateProvider<String?>((ref) => null);
 
+/// Organização recém-criada cujo CRM ainda deve ser conectado: o gate abre o
+/// assistente de conexão uma vez e limpa isto.
+final pendingCrmSetupGroupIdProvider = StateProvider<String?>((ref) => null);
+
 /// Grupo ativo, com fallback pro primeiro grupo da lista quando nenhum foi
 /// escolhido explicitamente (ou o escolhido não existe mais na lista).
 final activeGroupProvider = Provider<MyGroup?>((ref) {

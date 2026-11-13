@@ -35,6 +35,8 @@ final leadsResultsProvider = FutureProvider<List<Company>?>((ref) async {
   final hasFilters = _hasNonRadiusFilter(filters);
 
   if (!hasQuery && !hasFilters) return null;
+  // Sem organização não há base: nem chama o servidor.
+  if (groupId == null) return [];
 
   return repo.searchByText(
     query: hasQuery ? search.normalized : '',
