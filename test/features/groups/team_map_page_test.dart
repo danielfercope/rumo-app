@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/presentation/team_map_page.dart';
+import 'package:rumo_app/features/groups/presentation/tracking_history_page.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/map/providers/map_backend_provider.dart';
 
@@ -44,6 +45,7 @@ void main() {
       overrides: [
         useGoogleMapsProvider.overrideWith(() => FixedMapBackend(useGoogle)),
         groupTrackingProvider('g1').overrideWith((ref) => tracking()),
+        trackingHistoryProvider.overrideWith((ref, key) async => const []),
       ],
       child: const CupertinoApp(home: TeamMapPage(groupId: 'g1')),
     ));
@@ -83,7 +85,7 @@ void main() {
     expect(map.initialCameraPosition.target, const LatLng(-26.4843, -49.0717));
   });
 
-  testWidgets('no fallback OSM desenha os membros e mostra o nome ao tocar',
+  testWidgets('no fallback OSM desenha os membros e tocar abre o histórico',
       (tester) async {
     await pumpPage(tester, tracking: () async => _points, useGoogle: false);
 
@@ -96,11 +98,30 @@ void main() {
         of: find.byKey(const ValueKey('u1')),
         matching: find.byType(GestureDetector)));
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
+    expect(find.byType(TrackingHistoryPage), findsOneWidget);
     expect(find.text('Ana'), findsOneWidget);
-    await tester.tap(find.text('OK'));
-    await tester.pump();
-    expect(find.text('Ana'), findsNothing);
+  });
+
+  testWidgets('mostra o avatar com as iniciais e a última vez em formato BR',
+      (tester) async {
+    await pumpPage(
+      tester,
+      tracking: () async => [
+        TrackingPoint(
+          userId: 'u1',
+          nome: 'Ana Souza',
+          email: 'ana@x.com',
+          latitude: -26.30,
+          longitude: -48.84,
+          ultimoVisto: DateTime.now().subtract(const Duration(minutes: 7)),
+        ),
+      ],
+      useGoogle: false,
+    );
+
+    expect(find.text('AS'), findsOneWidget);
   });
 
   testWidgets('o botão de atualizar busca a equipe de novo', (tester) async {

@@ -116,7 +116,7 @@ void main() {
     });
 
     await pump(tester);
-    expect(find.text('Importando sua carteira…'), findsOneWidget);
+    expect(find.text('Importando sua carteira'), findsOneWidget);
     expect(find.text('Sincronizar agora'), findsNothing);
 
     await tester.pump(crmPollInterval);
@@ -128,6 +128,37 @@ void main() {
     await unmount(tester);
   });
 
+  testWidgets('importando: mostra quantas empresas já foram e a estimativa',
+      (tester) async {
+    when(() => service.buscarConexao('g1'))
+        .thenAnswer((_) async => conn('pendente'));
+    when(() => service.ultimaSincronizacao('g1')).thenAnswer(
+      (_) async => SyncLog(
+        tipo: 'carga_inicial',
+        situacao: 'em_andamento',
+        lidas: 300,
+        novas: 228,
+        atualizadas: 0,
+        falhas: 0,
+        iniciadaEm: DateTime.now().subtract(const Duration(minutes: 4)),
+        processadas: 230,
+        estimado: 502,
+      ),
+    );
+
+    await pump(tester);
+
+    expect(find.byKey(const ValueKey('import-percent')), findsOneWidget);
+    expect(find.text('45%'), findsOneWidget);
+    expect(find.textContaining('230 de 502 empresas'), findsOneWidget);
+    expect(find.textContaining('faltam'), findsOneWidget);
+    // o resumo "Última carga" só aparece quando termina
+    expect(find.textContaining('Última carga'), findsNothing);
+    await unmount(tester);
+    await tester.pump(crmPollInterval); // deixa o autoDispose cancelar o timer
+    await tester.pump();
+  });
+
   testWidgets(
       'falha transitória na carga inicial não fica "importando" '
       'para sempre', (tester) async {
@@ -137,7 +168,7 @@ void main() {
     await pump(tester);
 
     expect(find.text('Problema na integração'), findsOneWidget);
-    expect(find.text('Importando sua carteira…'), findsNothing);
+    expect(find.text('Importando sua carteira'), findsNothing);
     expect(find.text('Sincronizar agora'), findsOneWidget); // dá pra retentar
   });
 
@@ -255,6 +286,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Validar token'), findsOneWidget);
-    expect(find.text('Conectar CRM · 1 de 3'), findsOneWidget);
+    expect(find.text('Passo 1 de 3'), findsOneWidget);
   });
 }

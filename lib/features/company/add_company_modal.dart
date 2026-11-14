@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../map/providers/location_provider.dart';
 import '../auth/providers/profile_provider.dart';
+import '../groups/providers/group_provider.dart';
 import 'constants.dart';
 import 'registration_service.dart';
 
@@ -119,10 +120,17 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
 
     try {
       final service = ref.read(registrationServiceProvider);
+      final groupId = ref.read(activeGroupProvider)?.group.id;
+      if (groupId == null) {
+        setState(() => _errorMessage =
+            'Entre em uma organização para cadastrar empresas.');
+        return;
+      }
 
-      final exists = await service.cnpjExists(cnpj);
+      final exists = await service.cnpjInPortfolio(groupId, cnpj);
       if (exists) {
-        setState(() => _errorMessage = 'Esta empresa já está cadastrada.');
+        setState(() => _errorMessage =
+            'Esta empresa já está na carteira da sua organização.');
         return;
       }
 
@@ -200,9 +208,15 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
     try {
       final service = ref.read(registrationServiceProvider);
       final profile = ref.read(profileProvider).value;
+      final groupId = ref.read(activeGroupProvider)?.group.id;
+      if (groupId == null) {
+        setState(() => _errorMessage =
+            'Entre em uma organização para cadastrar empresas.');
+        return;
+      }
 
       await service.saveCompany(
-          _dadosApi!, _empresaLat!, _empresaLon!, _precisao!);
+          groupId, _dadosApi!, _empresaLat!, _empresaLon!, _precisao!);
 
       final dadosForm = {
         'primeiro_nome': _primeiroNomeCtrl.text,
@@ -224,12 +238,15 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
         'prioridade': _prioridadeKey,
       };
 
-      await service.sendToWebhook(
-        _dadosApi!,
-        dadosForm,
-        profile?.email ?? '',
-        profile?.nome ?? '',
-      );
+      // O webhook leva o cadastro ao CRM do RUMO: só pra organização configurada.
+      if (service.webhookEnabledFor(groupId)) {
+        await service.sendToWebhook(
+          _dadosApi!,
+          dadosForm,
+          profile?.email ?? '',
+          profile?.nome ?? '',
+        );
+      }
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {

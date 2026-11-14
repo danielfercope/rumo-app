@@ -4,7 +4,7 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from ..config import settings
@@ -35,6 +35,10 @@ from .token_cipher import TokenCipher
 logger = logging.getLogger("uvicorn.error.carteira_sync")
 
 MAX_ATTEMPTS = 5
+# Progresso da carga inicial: grava a cada N empresas (e ao fim de cada página).
+PROGRESS_EVERY = 5
+# Teto da contagem prévia (mesmo limite da prévia do assistente).
+ESTIMATE_CAP = 5000
 PENDING_BATCH = 25
 BACKOFF_BASE_MINUTES = 10
 BACKOFF_MAX_MINUTES = 360
@@ -91,6 +95,12 @@ class SyncResult:
     sem_mudanca: int = 0
     falhas: int = 0
     ignoradas: int = 0
+    # Progresso da carga inicial (a tela mostra "processadas de estimadas").
+    processadas: int = 0
+    estimado: int | None = None
+    progress: Callable[[], Awaitable[None]] | None = field(
+        default=None, repr=False, compare=False
+    )
 
 
 class CarteiraSyncService:
@@ -178,6 +188,22 @@ class CarteiraSyncService:
                 [self._log_row(sync_id, conexao, tipo, started_at)],
             )
 
+            async def report() -> None:
+                await self._db.update(
+                    "sincronizacoes",
+                    {"id": f"eq.{sync_id}"},
+                    {
+                        "total_estimado": result.estimado,
+                        "total_processadas": result.processadas,
+                        "total_lidas": result.lidas,
+                        "total_novas": result.novas,
+                        "total_atualizadas": result.atualizadas,
+                        "total_falhas": result.falhas,
+                    },
+                )
+
+            result.progress = report
+
         situacao = conexao.get("situacao", "pendente")
         erro: str | None = None
         try:
@@ -237,6 +263,9 @@ class CarteiraSyncService:
         result: SyncResult,
     ) -> None:
         mapping = CrmMapping.from_json(conexao.get("mapeamento"))
+        if result.progress is not None:
+            result.estimado = await self._estimate_total(connector, mapping)
+            await self._report(result, force=True)
         since_ms = None
         if watermark:
             # Sobreposição: o Search do HubSpot demora a indexar mudanças, então
@@ -248,6 +277,7 @@ class CarteiraSyncService:
             result.lidas += len(records)
             items = self.items_from(records, mapping, result)
             await self._ingest(conexao, items, result)
+            await self._report(result, force=True)
             # Marca d'água por página: se a carga cair no meio, retoma dali. Só
             # grava quando avança (a janela de sobreposição reconsulta o mesmo
             # registro todo ciclo).
@@ -260,6 +290,35 @@ class CarteiraSyncService:
                 )
 
         await self._retry_pending(conexao, result)
+
+    async def _estimate_total(
+        self, connector: CrmConnector, mapping: CrmMapping
+    ) -> int | None:
+        """Quantas empresas (CNPJ válido, sem repetição) a carga deve trazer,
+        pra mostrar progresso. Só conta, não grava; falhou, segue sem estimativa."""
+        cnpjs: set[str] = set()
+        try:
+            async for records in connector.fetch_changes(None, mapping):
+                cnpjs.update(
+                    c for c in (_only_digits(r.cnpj) for r in records) if len(c) == 14
+                )
+                if len(cnpjs) >= ESTIMATE_CAP:
+                    break
+        except UpstreamIntegrationError:
+            return None
+        return len(cnpjs)
+
+    async def _report(self, result: SyncResult, *, force: bool = False) -> None:
+        """Grava o progresso da carga inicial (a cada PROGRESS_EVERY empresas e
+        ao fim de cada página). Falhar aqui nunca derruba a sincronização."""
+        if result.progress is None:
+            return
+        if not force and result.processadas % PROGRESS_EVERY:
+            return
+        try:
+            await result.progress()
+        except Exception:
+            logger.warning("Falha ao gravar o progresso da carga", exc_info=True)
 
     @staticmethod
     def items_from(
@@ -316,6 +375,8 @@ class CarteiraSyncService:
         rows: list[dict] = []
         done: list[str] = []
         for item in items:
+            result.processadas += 1
+            await self._report(result)
             company_id = company_ids.get(item.cnpj)
             if company_id is None:
                 try:
@@ -517,6 +578,7 @@ class CarteiraSyncService:
         outcome = {
             "situacao": "erro" if erro else "concluida",
             "total_lidas": result.lidas,
+            "total_processadas": result.processadas,
             "total_novas": result.novas,
             "total_atualizadas": result.atualizadas,
             "total_falhas": result.falhas,

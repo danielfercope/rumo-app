@@ -255,11 +255,13 @@ async def test_carga_inicial_importa_empresas_e_grava_a_carteira(
     assert saved["ultimo_erro"] is None
     assert saved["ultima_modificacao_crm"].startswith("2023-11-14T22:13:19")
     assert connector.closed
-    assert connector.since_calls == [None]
+    # a carga inicial conta as empresas antes (pro progresso) e depois importa
+    assert connector.since_calls == [None, None]
 
     (log,) = db.tables["sincronizacoes"]
     assert (log["tipo"], log["situacao"]) == ("carga_inicial", "concluida")
     assert (log["total_lidas"], log["total_novas"]) == (3, 3)
+    assert (log["total_estimado"], log["total_processadas"]) == (3, 3)
     assert log["group_id"] == GROUP_A and log["conexao_id"] == conexao["id"]
 
 
@@ -496,7 +498,7 @@ async def test_run_cycle_so_processa_conexoes_ativas(db, make_conexao, make_serv
     results = await make_service(connector).run_cycle()
 
     assert list(results) == [ativa["id"]]
-    assert len(connector.since_calls) == 1
+    assert len(connector.since_calls) == 2  # contagem prévia + importação
 
 
 # ─── Sinais de priorização (criação e interação no CRM) ─────────────────
@@ -644,3 +646,49 @@ async def test_falha_no_recalculo_nao_derruba_a_sincronizacao(
     assert result.novas == 1
     assert db.carteira(GROUP_A) == {CNPJ_1: "lead"}
     assert _conexao_row(db, conexao)["situacao"] == "ativa"
+
+
+async def test_carga_inicial_grava_o_progresso_enquanto_roda(
+    db, lookup, make_conexao, make_service, monkeypatch
+):
+    from app.services import carteira_sync_service as mod
+
+    monkeypatch.setattr(mod, "PROGRESS_EVERY", 2)
+    cnpjs = [CNPJ_1, CNPJ_2, CNPJ_3, "04252011000110", "33000167000101"]
+    connector = FakeConnector(
+        [[rec(i + 1, c, "lead", NOW_MS - 1000 + i) for i, c in enumerate(cnpjs)]]
+    )
+    seen: list[tuple] = []
+    original = db.update
+
+    async def spy(table, filters, values):
+        if table == "sincronizacoes" and "total_estimado" in values:
+            seen.append((values["total_estimado"], values["total_processadas"]))
+        return await original(table, filters, values)
+
+    monkeypatch.setattr(db, "update", spy)
+
+    await make_service(connector).sync_connection(make_conexao())
+
+    # estimativa gravada antes de importar; depois o contador sobe de 2 em 2
+    assert seen[0] == (5, 0)
+    assert [p for _, p in seen] == sorted(p for _, p in seen)
+    assert (5, 2) in seen and (5, 4) in seen and seen[-1] == (5, 5)
+
+
+async def test_falha_ao_gravar_o_progresso_nao_derruba_a_carga(
+    db, lookup, make_conexao, make_service, monkeypatch
+):
+    connector = FakeConnector([[rec(1, CNPJ_1, "customer")]])
+    original = db.update
+
+    async def flaky(table, filters, values):
+        if table == "sincronizacoes" and "total_estimado" in values:
+            raise RuntimeError("banco indisponível")
+        return await original(table, filters, values)
+
+    monkeypatch.setattr(db, "update", flaky)
+
+    result = await make_service(connector).sync_connection(make_conexao())
+
+    assert result.novas == 1 and result.falhas == 0

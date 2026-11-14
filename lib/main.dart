@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +12,8 @@ import 'features/auth/profile_page.dart';
 import 'features/leads/leads_page.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/groups/presentation/groups_home_page.dart';
+import 'features/groups/presentation/organization_gate.dart';
+import 'features/groups/providers/group_provider.dart';
 import 'features/map/radar_page.dart';
 
 Future<void> main() async {
@@ -56,7 +58,8 @@ class RumoApp extends ConsumerWidget {
       home: authState.when(
         data: (user) {
           if (user != null) {
-            return const MainNavigation();
+            // sem organização, só Perfil e Organização (sem mapa nem busca)
+            return const OrganizationGate(child: MainNavigation());
           }
           return const LoginPage();
         },
@@ -69,45 +72,64 @@ class RumoApp extends ConsumerWidget {
   }
 }
 
-const _tabScreenNames = ['Radar', 'Leads', 'Perfil', 'Equipe'];
+enum _Tab {
+  radar('Radar', CupertinoIcons.map),
+  leads('Leads', CupertinoIcons.list_bullet),
+  perfil('Perfil', CupertinoIcons.person),
+  organizacao('Organização', CupertinoIcons.building_2_fill);
 
+  const _Tab(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
+List<_Tab> _tabsFor({required bool hasOrganization}) =>
+    hasOrganization ? _Tab.values : const [_Tab.organizacao, _Tab.perfil];
+
+/// Rótulos das abas pra quem tem (ou não) organização.
+@visibleForTesting
+List<String> mainTabLabels({required bool hasOrganization}) =>
+    [for (final t in _tabsFor(hasOrganization: hasOrganization)) t.label];
+
+/// Abas do app. Radar e Leads (a carteira de clientes) só existem pra quem
+/// pertence a uma organização; sem ela o usuário só tem Perfil e Organização
+/// (onde cria uma ou entra com um código de convite).
 class MainNavigation extends ConsumerWidget {
   const MainNavigation({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final hasOrganization =
+        (ref.watch(myGroupsProvider).valueOrNull ?? const []).isNotEmpty;
+    final tabs =
+        hasOrganization ? _Tab.values : const [_Tab.organizacao, _Tab.perfil];
+
     return CupertinoTabScaffold(
+      // trocar o conjunto de abas recria o scaffold (o índice não vale mais)
+      key: ValueKey(hasOrganization),
       tabBar: CupertinoTabBar(
         onTap: (index) {
           ref.read(analyticsProvider).logScreenView(
-                screenName: _tabScreenNames[index],
+                screenName: tabs[index].label,
               );
         },
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.map), label: 'Radar'),
-          BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.list_bullet), label: 'Leads'),
-          BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.person), label: 'Perfil'),
-          BottomNavigationBarItem(
-              icon: Icon(CupertinoIcons.person_2), label: 'Equipe'),
+        items: [
+          for (final t in tabs)
+            BottomNavigationBarItem(icon: Icon(t.icon), label: t.label),
         ],
       ),
       tabBuilder: (context, index) {
         return CupertinoTabView(
           builder: (context) {
-            switch (index) {
-              case 0:
+            switch (tabs[index]) {
+              case _Tab.radar:
                 return const RadarPage();
-              case 1:
+              case _Tab.leads:
                 return const LeadsPage();
-              case 2:
+              case _Tab.perfil:
                 return const ProfilePage();
-              case 3:
+              case _Tab.organizacao:
                 return const GroupsHomePage();
-              default:
-                return const CupertinoPageScaffold(child: SizedBox.shrink());
             }
           },
         );

@@ -260,20 +260,32 @@ void main() {
   });
 
   group('vários grupos e estados', () {
-    testWidgets('o seletor troca o grupo ativo', (tester) async {
+    testWidgets('sem seletor de segmentos; "Trocar" muda a organização ativa',
+        (tester) async {
       await pump(tester, groups: [
         mine(makeGroup('g1', 'Agro Sul'), 'admin'),
         mine(makeGroup('g2', 'Agro Norte'), 'member'),
       ]);
-      expect(find.byType(CupertinoSlidingSegmentedControl<String>),
-          findsOneWidget);
+      expect(
+          find.byType(CupertinoSlidingSegmentedControl<String>), findsNothing);
       expect(find.text('Convite do grupo'), findsOneWidget); // admin em g1
 
+      await tester.tap(find.text('Trocar'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Agro Norte'));
       await tester.pumpAndSettle();
 
       // em g2 o usuário é só membro: some a gestão
       expect(find.text('Convite do grupo'), findsNothing);
+    });
+
+    testWidgets('uma organização só: sem botão Trocar e com aviso de carteira',
+        (tester) async {
+      await pump(tester);
+
+      expect(find.text('Trocar'), findsNothing);
+      expect(find.textContaining('pertencem só a esta organização'),
+          findsOneWidget);
     });
 
     testWidgets('um membro só: texto no singular', (tester) async {

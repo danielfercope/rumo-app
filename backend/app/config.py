@@ -39,9 +39,21 @@ class Settings(BaseSettings):
     # precisam reconectar); trocá-la idem.
     crm_token_encryption_key: str = ""
 
+    # Organização dona do CRM global (CRM_TOKEN): as rotas /crm (notas e contatos
+    # lidos e gravados nessa conta) só atendem a ela. Vazio = ninguém. As demais
+    # organizações têm o próprio CRM em crm_conexoes e, por ora, não usam /crm.
+    crm_legacy_group_id: str = ""
+
     # Chave de SERVIDOR da Google Geocoding API (distinta da chave do Maps no
     # app, que é restrita por referrer/app).
     geocoding_api_key: str = ""
+
+    # Google Places nos detalhes da empresa (foto, nota, avaliações, site,
+    # horários). Usa a mesma chave de servidor do Geocoding (a Places API (New)
+    # precisa estar ativada nela). Cobrado por consulta, e só quando a pessoa
+    # toca em "Ver no Google"; pelos termos do Google, só o place_id fica
+    # guardado. False desliga a fonte.
+    enrichment_google_places_enabled: bool = True
 
     # PostgREST dentro da rede do compose (sem passar pelo Caddy).
     postgrest_url: str = "http://postgrest:3000"

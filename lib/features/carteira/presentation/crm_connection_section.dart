@@ -6,6 +6,7 @@ import '../../map/providers/company_provider.dart';
 import '../models/crm_models.dart';
 import '../providers/carteira_provider.dart';
 import 'crm_connection_wizard.dart';
+import 'import_progress.dart';
 
 String _formatDateTime(DateTime d) {
   String two(int n) => n.toString().padLeft(2, '0');
@@ -200,7 +201,7 @@ class CrmConnectionSection extends ConsumerWidget {
     final lastSync = ref.watch(lastSyncProvider(groupId)).valueOrNull;
     final importing = conn.status == CrmConnectionStatus.importando;
 
-    final loadLine = lastSync == null
+    final loadLine = lastSync == null || importing
         ? null
         : Text(
             'Última carga: ${lastSync.lidas} lidas · ${lastSync.novas} novas · '
@@ -209,10 +210,7 @@ class CrmConnectionSection extends ConsumerWidget {
           );
 
     final Widget status = switch (conn.status) {
-      CrmConnectionStatus.importando => const CupertinoListTile.notched(
-          leading: CupertinoActivityIndicator(),
-          title: Text('Importando sua carteira…'),
-        ),
+      CrmConnectionStatus.importando => ImportProgress(log: lastSync),
       CrmConnectionStatus.conectado => CupertinoListTile.notched(
           leading:
               _badge(CupertinoIcons.checkmark_alt, CupertinoColors.systemGreen),

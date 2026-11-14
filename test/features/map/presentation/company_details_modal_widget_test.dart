@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:rumo_app/features/company/crm_service.dart';
+import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/map/models/company_model.dart';
 import 'package:rumo_app/features/map/presentation/company_details_modal.dart';
 import 'package:url_launcher_platform_interface/link.dart';
@@ -67,7 +68,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
-      overrides: [crmServiceProvider.overrideWithValue(crm)],
+      overrides: [
+        crmServiceProvider.overrideWithValue(crm),
+        activeGroupProvider.overrideWithValue(null),
+      ],
       child: CupertinoApp(
         home:
             CupertinoPageScaffold(child: CompanyDetailsModal(company: company)),
@@ -130,7 +134,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
-      overrides: [crmServiceProvider.overrideWithValue(crm)],
+      overrides: [
+        crmServiceProvider.overrideWithValue(crm),
+        activeGroupProvider.overrideWithValue(null),
+      ],
       child: CupertinoApp(
         home: CupertinoPageScaffold(
             child: CompanyDetailsModal(company: buildCompany())),

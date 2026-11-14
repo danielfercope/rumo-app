@@ -68,22 +68,24 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                       (options['cities'] as List? ?? []).cast<String>();
                 }
 
+                List<String> opts(String key) =>
+                    (options[key] as List? ?? []).cast<String>();
+                // Filtro sem nenhuma opção na carteira (ex.: produto, quando a
+                // base veio do CRM sem esse dado) não aparece.
+                final products = opts('products');
+                final states = opts('states');
+                final cnaes = opts('cnaes');
+
                 return ListView(
                   children: [
                     _buildRadiusSection(),
                     const SizedBox(height: 24),
-                    _buildSearchableField('Segmento', _tempFilters.segment,
-                        (options['segments'] as List? ?? []).cast<String>(),
-                        (v) {
-                      setState(() => _tempFilters = _tempFilters.copyWith(
-                          segment: v, clearSegment: v == null));
-                    }),
-                    _buildSearchableField('Produto', _tempFilters.product,
-                        (options['products'] as List? ?? []).cast<String>(),
-                        (v) {
-                      setState(() => _tempFilters = _tempFilters.copyWith(
-                          product: v, clearProduct: v == null));
-                    }),
+                    if (products.isNotEmpty || _tempFilters.product != null)
+                      _buildSearchableField(
+                          'Produto', _tempFilters.product, products, (v) {
+                        setState(() => _tempFilters = _tempFilters.copyWith(
+                            product: v, clearProduct: v == null));
+                      }),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
                       child: Text('Tipo de Empresa',
@@ -110,21 +112,24 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                             clearType: v == 'all'));
                       },
                     ),
-                    _buildSearchableField('Estado (UF)', _tempFilters.state,
-                        (options['states'] as List? ?? []).cast<String>(), (v) {
-                      setState(() => _tempFilters = _tempFilters.copyWith(
-                          state: v, clearState: v == null));
-                    }),
-                    _buildSearchableField(
-                        'Cidade', _tempFilters.city, citiesForState, (v) {
-                      setState(() => _tempFilters =
-                          _tempFilters.copyWith(city: v, clearCity: v == null));
-                    }),
-                    _buildSearchableField('CNAE', _tempFilters.cnae,
-                        (options['cnaes'] as List? ?? []).cast<String>(), (v) {
-                      setState(() => _tempFilters =
-                          _tempFilters.copyWith(cnae: v, clearCnae: v == null));
-                    }),
+                    if (states.isNotEmpty || _tempFilters.state != null)
+                      _buildSearchableField(
+                          'Estado (UF)', _tempFilters.state, states, (v) {
+                        setState(() => _tempFilters = _tempFilters.copyWith(
+                            state: v, clearState: v == null));
+                      }),
+                    if (citiesForState.isNotEmpty || _tempFilters.city != null)
+                      _buildSearchableField(
+                          'Cidade', _tempFilters.city, citiesForState, (v) {
+                        setState(() => _tempFilters = _tempFilters.copyWith(
+                            city: v, clearCity: v == null));
+                      }),
+                    if (cnaes.isNotEmpty || _tempFilters.cnae != null)
+                      _buildSearchableField('CNAE', _tempFilters.cnae, cnaes,
+                          (v) {
+                        setState(() => _tempFilters = _tempFilters.copyWith(
+                            cnae: v, clearCnae: v == null));
+                      }),
                     const SizedBox(height: 40),
                     CupertinoButton(
                       color: CupertinoColors.systemRed.withValues(alpha: 0.2),
@@ -171,13 +176,30 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                     color: CupertinoColors.activeBlue)),
           ],
         ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            for (final km in radiusPresetsKm) ...[
+              Expanded(
+                child: _RadiusPreset(
+                  km: km,
+                  selected: _tempFilters.radius.round() == km.round(),
+                  onTap: () => setState(
+                      () => _tempFilters = _tempFilters.copyWith(radius: km)),
+                ),
+              ),
+              if (km != radiusPresetsKm.last) const SizedBox(width: 8),
+            ],
+          ],
+        ),
         const SizedBox(height: 8),
         CupertinoSlider(
-          value: _tempFilters.radius,
-          min: 1,
-          max: 15000,
-          onChanged: (v) =>
-              setState(() => _tempFilters = _tempFilters.copyWith(radius: v)),
+          value: _tempFilters.radius.clamp(minRadiusKm, maxRadiusKm),
+          min: minRadiusKm,
+          max: maxRadiusKm,
+          divisions: (maxRadiusKm - minRadiusKm).round(),
+          onChanged: (v) => setState(() =>
+              _tempFilters = _tempFilters.copyWith(radius: v.roundToDouble())),
         ),
       ],
     );
@@ -259,6 +281,41 @@ class _FilterModalState extends ConsumerState<FilterModal> {
         title: title,
         options: options,
         onSelected: onSelected,
+      ),
+    );
+  }
+}
+
+class _RadiusPreset extends StatelessWidget {
+  const _RadiusPreset(
+      {required this.km, required this.selected, required this.onTap});
+
+  final double km;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: ValueKey('raio-${km.round()}'),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? CupertinoColors.activeBlue
+              : CupertinoColors.darkBackgroundGray,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text('${km.round()} km',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected
+                    ? CupertinoColors.white
+                    : CupertinoColors.systemGrey)),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/api_client.dart';
+import '../groups/providers/group_provider.dart';
 
 class CrmNote {
   final String id;
@@ -34,12 +35,23 @@ class CrmContact {
 // este contrato (4 ações, mesmo payload) continua igual.
 class CrmService {
   final ApiClient _apiClient;
+  final String? Function() _activeGroupId;
 
-  CrmService(this._apiClient);
+  /// [activeGroupId] devolve a organização ativa: o Backend confere que o
+  /// usuário é membro e que o CNPJ está na carteira dela.
+  CrmService(this._apiClient, {String? Function()? activeGroupId})
+      : _activeGroupId = activeGroupId ?? (() => null);
+
+  Future<dynamic> _call(Map<String, dynamic> body) {
+    final groupId = _activeGroupId();
+    if (groupId == null) {
+      throw StateError('Entre em uma organização para usar o CRM.');
+    }
+    return _apiClient.backend('crm', {'group_id': groupId, ...body});
+  }
 
   Future<List<CrmNote>> getNotesWithOwners(String cnpj) async {
-    final data = await _apiClient.backend(
-      'crm',
+    final data = await _call(
       {'action': 'getNotesWithOwners', 'cnpj': cnpj},
     ) as Map<String, dynamic>;
     final notes = (data['notes'] as List?) ?? [];
@@ -54,8 +66,7 @@ class CrmService {
   }
 
   Future<List<CrmContact>> getContacts(String cnpj) async {
-    final data = await _apiClient.backend(
-      'crm',
+    final data = await _call(
       {'action': 'getContacts', 'cnpj': cnpj},
     ) as Map<String, dynamic>;
     final contacts = (data['contacts'] as List?) ?? [];
@@ -75,7 +86,7 @@ class CrmService {
     required String telefone,
     String? email,
   }) async {
-    await _apiClient.backend('crm', {
+    await _call({
       'action': 'addContact',
       'cnpj': cnpj,
       'nome': nome,
@@ -88,7 +99,7 @@ class CrmService {
     required String cnpj,
     required String noteText,
   }) async {
-    await _apiClient.backend('crm', {
+    await _call({
       'action': 'addNote',
       'cnpj': cnpj,
       'noteText': noteText,
@@ -99,7 +110,11 @@ class CrmService {
 // ─── Providers ──────────────────────────────────────────────────────────────
 
 final crmServiceProvider = Provider<CrmService>((ref) {
-  return CrmService(ref.watch(apiClientProvider));
+  return CrmService(
+    ref.watch(apiClientProvider),
+    // lido a cada chamada: trocar de organização vale na hora
+    activeGroupId: () => ref.read(activeGroupProvider)?.group.id,
+  );
 });
 
 final crmNotesProvider =

@@ -4,6 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/company_model.dart';
 import '../../company/crm_service.dart';
+import '../../enrichment/models/enrichment_models.dart';
+import '../../enrichment/presentation/enrichment_cards.dart';
+import '../../enrichment/providers/enrichment_provider.dart';
+import '../../groups/providers/group_provider.dart';
+import 'priority_explanation_section.dart';
 
 String formatCnpj(String cnpj) {
   final d = cnpj.replaceAll(RegExp(r'\D'), '');
@@ -36,6 +41,61 @@ class CompanyDetailsModal extends ConsumerWidget {
     final notesAsync = ref.watch(crmNotesProvider(company.cnpj ?? ''));
     final contactsAsync = ref.watch(crmContactsProvider(company.cnpj ?? ''));
 
+    // A Receita completa os contatos quando a empresa não os tem no cadastro.
+    // O Google não: cada consulta é cobrada e só acontece quando a pessoa pede,
+    // no bloco "No Google".
+    final groupId = ref.watch(activeGroupProvider)?.group.id;
+    final cnpj = (company.cnpj ?? '').replaceAll(RegExp(r'\D'), '');
+    final canEnrich = groupId != null && cnpj.length == 14;
+    final receitaResult = canEnrich
+        ? ref
+            .watch(enrichmentProvider((
+              groupId: groupId,
+              cnpj: cnpj,
+              fonte: EnrichmentSource.receita,
+            )))
+            .valueOrNull
+        : null;
+    final receita = receitaResult?.hasData == true
+        ? ReceitaData.fromJson(receitaResult!.dados!)
+        : null;
+    final telefone = _firstFilled([
+      company.telefone,
+      if (receita != null && receita.telefones.isNotEmpty)
+        receita.telefones.first,
+    ]);
+    final email = _firstFilled([company.email, receita?.email]);
+    final endereco = _firstFilled([company.address, receita?.endereco]);
+    final contactTiles = [
+      if (telefone != null)
+        _tile(context, 'Telefone', telefone, CupertinoIcons.phone),
+      if (email != null) _tile(context, 'Email', email, CupertinoIcons.mail),
+      if (endereco != null)
+        _tile(context, 'Endereço', endereco, CupertinoIcons.location),
+    ];
+    final creditTiles = [
+      if (_filled(company.saudeTributaria))
+        _tile(context, 'Saúde Tributária', company.saudeTributaria,
+            CupertinoIcons.chart_bar),
+      if (_filled(company.dividaAtiva))
+        _tile(context, 'Dívida Ativa', company.dividaAtiva,
+            CupertinoIcons.exclamationmark_shield),
+      if (_filled(company.scorePropensao))
+        _tile(context, 'Score', company.scorePropensao,
+            CupertinoIcons.star_circle),
+    ];
+    // CNAE e natureza jurídica já aparecem (completos) no bloco da Receita.
+    final infoTiles = receita != null
+        ? const <Widget>[]
+        : [
+            if (_filled(company.cnaePrincipal))
+              _tile(context, 'CNAE', company.cnaePrincipal,
+                  CupertinoIcons.doc_text),
+            if (_filled(company.naturezaJuridica))
+              _tile(context, 'Natureza Jurídica', company.naturezaJuridica,
+                  CupertinoIcons.briefcase),
+          ];
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,
       decoration: const BoxDecoration(
@@ -58,13 +118,11 @@ class CompanyDetailsModal extends ConsumerWidget {
               padding: const EdgeInsets.all(20),
               children: [
                 GestureDetector(
-                  onTap: () => _copyToClipboard(context,
-                      company.fantasyName ?? company.name ?? 'Empresa'),
+                  onTap: () => _copyToClipboard(context, company.displayName),
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                            company.fantasyName ?? company.name ?? 'Empresa',
+                        child: Text(company.displayName,
                             style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
@@ -75,7 +133,7 @@ class CompanyDetailsModal extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (company.fantasyName != null && company.name != null)
+                if (company.name != null && company.name != company.displayName)
                   Text(company.name!,
                       style: const TextStyle(
                           fontSize: 14, color: CupertinoColors.systemGrey)),
@@ -122,34 +180,24 @@ class CompanyDetailsModal extends ConsumerWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                _buildHighlights(),
                 const SizedBox(height: 16),
+                if (contactTiles.isNotEmpty)
+                  _buildSection(context, 'Contatos e Endereço', contactTiles),
+                if (_buildHighlights() case final Widget highlights) ...[
+                  highlights,
+                  const SizedBox(height: 16),
+                ],
                 _buildActionButtons(context),
-                const SizedBox(height: 20),
-                _buildSection(context, 'Contatos e Endereço', [
-                  _tile(context, 'Telefone', company.telefone,
-                      CupertinoIcons.phone),
-                  _tile(context, 'Email', company.email, CupertinoIcons.mail),
-                  _tile(context, 'Endereço', company.address,
-                      CupertinoIcons.location),
-                ]),
+                const SizedBox(height: 16),
+                PriorityExplanationSection(company: company),
+                if (canEnrich)
+                  CompanyEnrichmentCards(groupId: groupId, cnpj: cnpj),
                 _buildCrmContacts(contactsAsync),
-                if (company.isClient != true)
-                  _buildSection(context, 'Dados de Crédito e Dívida', [
-                    _tile(context, 'Saúde Tributária', company.saudeTributaria,
-                        CupertinoIcons.chart_bar),
-                    _tile(context, 'Dívida Ativa', company.dividaAtiva,
-                        CupertinoIcons.exclamationmark_shield),
-                    _tile(context, 'Score', company.scorePropensao,
-                        CupertinoIcons.star_circle),
-                  ]),
-                _buildSection(context, 'Informações', [
-                  _tile(context, 'CNAE', company.cnaePrincipal,
-                      CupertinoIcons.doc_text),
-                  _tile(context, 'Natureza Jurídica', company.naturezaJuridica,
-                      CupertinoIcons.briefcase),
-                ]),
+                if (company.isClient != true && creditTiles.isNotEmpty)
+                  _buildSection(
+                      context, 'Dados de Crédito e Dívida', creditTiles),
+                if (infoTiles.isNotEmpty)
+                  _buildSection(context, 'Informações', infoTiles),
                 _buildActivities(context, notesAsync),
                 const SizedBox(height: 20),
               ],
@@ -424,16 +472,23 @@ class CompanyDetailsModal extends ConsumerWidget {
     );
   }
 
-  Widget _buildHighlights() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
+  /// Segmento, faturamento e funcionários — só os que a empresa tem; sem
+  /// nenhum, a faixa inteira some (nulo).
+  Widget? _buildHighlights() {
+    final items = [
+      if (_filled(company.segment))
         _hItem('Segmento', company.segment, CupertinoIcons.tag),
+      if (_filled(company.faturamento))
         _hItem('Fat. Estimado', formatFaturamento(company.faturamento),
             CupertinoIcons.money_dollar),
-        _hItem('Funcionários', company.funcionarios?.split(' ').first,
+      if (_filled(company.funcionarios))
+        _hItem('Funcionários', company.funcionarios!.split(' ').first,
             CupertinoIcons.person_2),
-      ],
+    ];
+    if (items.isEmpty) return null;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: items,
     );
   }
 
@@ -500,6 +555,18 @@ class CompanyDetailsModal extends ConsumerWidget {
       ),
     );
   }
+}
+
+bool _filled(String? v) {
+  final t = v?.trim();
+  return t != null && t.isNotEmpty && t != 'N/A' && t != 'Não informado';
+}
+
+String? _firstFilled(List<String?> values) {
+  for (final v in values) {
+    if (_filled(v)) return v!.trim();
+  }
+  return null;
 }
 
 // ─── Botão de ação ────────────────────────────────────────────────────────────

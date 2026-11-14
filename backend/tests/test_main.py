@@ -7,7 +7,9 @@ from app import main
 from app.internal_token import mint_internal_token
 from app.errors import (
     CnpjNotFoundError,
+    CompanyNotInPortfolioError,
     CrmCompanyNotFoundError,
+    NotGroupMemberError,
     UnauthenticatedError,
     UpstreamIntegrationError,
 )
@@ -17,6 +19,18 @@ from app.errors import (
 def client():
     # Sem `with`: não dispara o lifespan (testado à parte, abaixo).
     return TestClient(main.app)
+
+
+@pytest.fixture
+def acesso_liberado(monkeypatch):
+    """Usuário membro, empresa na carteira e organização dona do CRM global."""
+    async def ok(*args):
+        return None
+
+    monkeypatch.setattr(main.access_service, "require_any_organization", ok)
+    monkeypatch.setattr(main.access_service, "require_member", ok)
+    monkeypatch.setattr(main.access_service, "require_cnpj_in_portfolio", ok)
+    monkeypatch.setattr(main.settings, "crm_legacy_group_id", "g1")
 
 
 @pytest.fixture
@@ -63,7 +77,7 @@ def test_auth_exchange_exige_o_header(client):
     [(None, 200), (CnpjNotFoundError("sem cnpj"), 404),
      (UpstreamIntegrationError("brasilapi fora"), 502)],
 )
-def test_company_lookup(client, auth, monkeypatch, error, status):
+def test_company_lookup(client, auth, acesso_liberado, monkeypatch, error, status):
     async def fake(cnpj):
         if error:
             raise error
@@ -83,7 +97,7 @@ def test_company_lookup(client, auth, monkeypatch, error, status):
     [(None, 200), (CrmCompanyNotFoundError("sem empresa"), 404),
      (UpstreamIntegrationError("crm fora"), 502)],
 )
-def test_crm(client, auth, monkeypatch, error, status):
+def test_crm(client, auth, acesso_liberado, monkeypatch, error, status):
     async def fake(payload):
         if error:
             raise error
@@ -92,7 +106,9 @@ def test_crm(client, auth, monkeypatch, error, status):
     monkeypatch.setattr(main.crm_service, "handle", fake)
 
     response = client.post(
-        "/crm", json={"action": "getNotesWithOwners", "cnpj": "123"}, headers=auth
+        "/crm",
+        json={"group_id": "g1", "action": "getNotesWithOwners", "cnpj": "123"},
+        headers=auth,
     )
 
     assert response.status_code == status
@@ -102,7 +118,105 @@ def test_crm(client, auth, monkeypatch, error, status):
 
 def test_crm_rejeita_acao_desconhecida(client, auth):
     response = client.post(
-        "/crm", json={"action": "apagarTudo", "cnpj": "1"}, headers=auth
+        "/crm",
+        json={"group_id": "g1", "action": "apagarTudo", "cnpj": "1"},
+        headers=auth,
+    )
+
+    assert response.status_code == 422
+
+
+def test_company_lookup_exige_organizacao(client, auth, monkeypatch):
+    chamadas = []
+
+    async def sem_organizacao(uid):
+        raise NotGroupMemberError("Entre em uma organização para usar este recurso.")
+
+    async def lookup(cnpj):
+        chamadas.append(cnpj)
+        return {}
+
+    monkeypatch.setattr(main.access_service, "require_any_organization", sem_organizacao)
+    monkeypatch.setattr(main.company_lookup_service, "lookup_cnpj", lookup)
+
+    response = client.post("/company-lookup", json={"cnpj": "123"}, headers=auth)
+
+    assert response.status_code == 403
+    assert chamadas == [], "sem organização não pode consultar nem a BrasilAPI"
+
+
+CRM_BODY = {"group_id": "g1", "action": "getNotesWithOwners", "cnpj": "123"}
+
+
+def _crm_espiao(monkeypatch):
+    chamadas = []
+
+    async def handle(payload):
+        chamadas.append(payload)
+        return {"notes": []}
+
+    monkeypatch.setattr(main.crm_service, "handle", handle)
+    return chamadas
+
+
+def test_crm_nega_quem_nao_e_membro_da_organizacao(client, auth, acesso_liberado, monkeypatch):
+    chamadas = _crm_espiao(monkeypatch)
+
+    async def nao_membro(uid, group_id):
+        raise NotGroupMemberError("Você não pertence a esta organização.")
+
+    monkeypatch.setattr(main.access_service, "require_member", nao_membro)
+
+    response = client.post("/crm", json=CRM_BODY, headers=auth)
+
+    assert response.status_code == 403
+    assert chamadas == [], "o CRM global não pode ser consultado por quem não é da organização"
+
+
+def test_crm_nega_empresa_que_nao_esta_na_carteira(client, auth, acesso_liberado, monkeypatch):
+    chamadas = _crm_espiao(monkeypatch)
+
+    async def fora_da_carteira(group_id, cnpj):
+        raise CompanyNotInPortfolioError("Empresa não encontrada na carteira desta organização.")
+
+    monkeypatch.setattr(main.access_service, "require_cnpj_in_portfolio", fora_da_carteira)
+
+    response = client.post("/crm", json=CRM_BODY, headers=auth)
+
+    assert response.status_code == 404
+    assert chamadas == []
+
+
+@pytest.mark.parametrize("dona", ["", "outra-organizacao"])
+def test_crm_so_atende_a_organizacao_dona_do_crm_global(
+    client, auth, acesso_liberado, monkeypatch, dona
+):
+    chamadas = _crm_espiao(monkeypatch)
+    monkeypatch.setattr(main.settings, "crm_legacy_group_id", dona)
+
+    response = client.post("/crm", json=CRM_BODY, headers=auth)
+
+    assert response.status_code == 403
+    assert chamadas == [], "membro de outra organização não lê as notas do CRM do RUMO"
+
+
+def test_crm_confere_pertinencia_com_o_uid_do_token(client, auth, acesso_liberado, monkeypatch):
+    vistos = []
+
+    async def membro(uid, group_id):
+        vistos.append((uid, group_id))
+
+    monkeypatch.setattr(main.access_service, "require_member", membro)
+    _crm_espiao(monkeypatch)
+
+    client.post("/crm", json=CRM_BODY, headers=auth)
+
+    assert vistos == [("uid-1", "g1")], "a identidade vem do token, nunca do corpo"
+
+
+def test_crm_exige_group_id(client, auth):
+    response = client.post(
+        "/crm", json={"action": "getNotesWithOwners", "cnpj": "123"}, headers=auth
     )
 
     assert response.status_code == 422
@@ -112,7 +226,7 @@ def test_crm_rejeita_acao_desconhecida(client, auth):
     "path, body",
     [
         ("/company-lookup", {"cnpj": "123"}),
-        ("/crm", {"action": "getNotesWithOwners", "cnpj": "123"}),
+        ("/crm", {"group_id": "g1", "action": "getNotesWithOwners", "cnpj": "123"}),
     ],
 )
 def test_endpoints_de_dados_exigem_autenticacao(client, monkeypatch, path, body):

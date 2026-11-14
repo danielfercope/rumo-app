@@ -262,8 +262,7 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
                     (_, index) {
                       final company = filtered[index];
                       return CupertinoListTile(
-                        title: Text(
-                            company.fantasyName ?? company.name ?? 'Empresa'),
+                        title: Text(company.displayName),
                         subtitle: Text(company.segment ?? 'Sem segmento'),
                         trailing: const CupertinoListTileChevron(),
                         onTap: () {

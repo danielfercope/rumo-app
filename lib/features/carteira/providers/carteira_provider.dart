@@ -82,3 +82,12 @@ final priorityProvider = FutureProvider.autoDispose
   if (data.calculando) _pollAgain(ref, disposed);
   return data;
 });
+
+/// Explicação da nota de um lead (um por empresa aberta nos detalhes).
+final priorityExplanationProvider = FutureProvider.autoDispose
+    .family<PriorityExplanation?, ({String groupId, String companyId})>(
+        (ref, key) {
+  return ref
+      .watch(carteiraServiceProvider)
+      .explicarEmpresa(key.groupId, key.companyId);
+});

@@ -35,7 +35,7 @@ void main() {
   testWidgets('sem grupos mostra o onboarding', (tester) async {
     await pump(tester, () async => []);
 
-    expect(find.text('Equipe'), findsOneWidget);
+    expect(find.text('Organização'), findsOneWidget);
     expect(find.byType(GroupOnboardingView), findsOneWidget);
   });
 
@@ -69,7 +69,8 @@ void main() {
   testWidgets('erro mostra a mensagem e Tentar novamente busca de novo',
       (tester) async {
     await pump(tester, () async => throw Exception('sem rede'));
-    expect(find.text('Não foi possível carregar os grupos'), findsOneWidget);
+    expect(
+        find.text('Não foi possível carregar sua organização'), findsOneWidget);
     expect(find.textContaining('sem rede'), findsOneWidget);
     final before = fetches;
 

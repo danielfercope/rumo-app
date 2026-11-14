@@ -5,6 +5,7 @@ import 'package:rumo_app/features/map/providers/company_provider.dart';
 import 'package:rumo_app/features/map/data/company_repository.dart';
 import 'package:rumo_app/features/map/providers/filter_provider.dart';
 
+import '../../helpers/active_group.dart';
 import '../../helpers/fakes.dart';
 
 void main() {
@@ -15,6 +16,7 @@ void main() {
     repo = FakeCompanyRepository(companies: [buildCompany()]);
     container = ProviderContainer(overrides: [
       companyRepositoryProvider.overrideWithValue(repo),
+      activeGroupOverride(),
     ]);
     addTearDown(container.dispose);
   });
@@ -49,6 +51,28 @@ void main() {
       expect(result, isNotNull);
       expect(repo.lastQuery, '');
       expect(repo.lastFilters?.segment, 'Varejo');
+    });
+
+    test('a busca leva a organização ativa', () async {
+      container.read(leadsSearchQueryProvider.notifier).state =
+          const LeadsSearchQuery(query: 'loja', isCnpj: false);
+      await container.read(leadsResultsProvider.future);
+      expect(repo.lastGroupId, 'g1');
+    });
+
+    test('sem organização ativa a busca nem chega ao servidor', () async {
+      final semOrg = FakeCompanyRepository(companies: [buildCompany()]);
+      final c = ProviderContainer(overrides: [
+        companyRepositoryProvider.overrideWithValue(semOrg),
+        noActiveGroupOverride(),
+      ]);
+      addTearDown(c.dispose);
+      c.read(leadsSearchQueryProvider.notifier).state =
+          const LeadsSearchQuery(query: 'loja', isCnpj: false);
+
+      expect(await c.read(leadsResultsProvider.future), isEmpty);
+      expect(semOrg.lastQuery, isNull,
+          reason: 'o repositório não pode ser consultado');
     });
 
     test('alterar só o raio não dispara busca', () async {

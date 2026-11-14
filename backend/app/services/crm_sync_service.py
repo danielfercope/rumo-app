@@ -57,7 +57,9 @@ def build_company_row(data: dict, cnpj: str, lat: float, lon: float, precisao: s
     return {
         "cnpj": cnpj,
         "razao_social": data.get("razao"),
-        "nome_fantasia": data.get("fantasia"),
+        # a BrasilAPI manda string vazia quando não há fantasia: NULL, senão o app
+        # (que só cai pra razão social em NULL) mostra o título em branco
+        "nome_fantasia": (data.get("fantasia") or "").strip() or None,
         "email_principal": data.get("email"),
         "url_company_page": data.get("site"),
         "telefone_principal": f"{ddd}{tel}" if ddd and tel else None,

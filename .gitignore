@@ -53,5 +53,8 @@ infra/firebase-service-account.json
 # Relatório de cobertura (gerado por `flutter test --coverage`)
 coverage/
 
+# Chave do Google Maps pro iOS nativo (ver ios/Flutter/Secrets.xcconfig.example)
+ios/Flutter/Secrets.xcconfig
+
 # Chave do Google Maps pro Flutter Web (ver web/env.js.example)
 web/env.js

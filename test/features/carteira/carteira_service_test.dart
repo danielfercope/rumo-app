@@ -241,6 +241,97 @@ void prioridadeTests() {
       expect(result.itens.single.local, 'Joinville / SC');
     });
 
+    test('modo compacto pede a carteira inteira sem nome nem motivos',
+        () async {
+      when(() => api.backendRequest('GET', 'carteira/prioridade',
+          body: any(named: 'body'), query: any(named: 'query'))).thenAnswer(
+        (_) async => {
+          'estrategia': 'perfil',
+          'n_clientes': 12,
+          'n_leads': 1,
+          'itens': [
+            {'posicao': 1, 'company_id': 'c1', 'nota': 90, 'motivos': []},
+          ],
+        },
+      );
+
+      final result =
+          await service.prioridade('g1', limit: 5000, compacto: true);
+
+      final query = verify(() => api.backendRequest(
+              'GET', 'carteira/prioridade',
+              body: any(named: 'body'), query: captureAny(named: 'query')))
+          .captured
+          .single as Map<String, String>;
+      expect(query, {'group_id': 'g1', 'limit': '5000', 'compacto': 'true'});
+      expect(result.itens.single.nome, isNull);
+      expect(result.itens.single.nota, 90);
+    });
+
+    test('explicarEmpresa lê fatores, números e dados que faltam', () async {
+      when(() => api.backendRequest('GET', 'carteira/prioridade/empresa',
+          body: any(named: 'body'), query: any(named: 'query'))).thenAnswer(
+        (_) async => {
+          'disponivel': true,
+          'estrategia': 'perfil',
+          'posicao': 5,
+          'nota': 92,
+          'total_leads': 351,
+          'n_clientes': 151,
+          'confiavel': true,
+          'motivos': ['Estado: PR'],
+          'sem_dado': ['Faturamento'],
+          'sinais': null,
+          'fatores': [
+            {
+              'chave': 'uf',
+              'campo': 'Estado',
+              'valor': 'PR',
+              'efeito': 'favorece',
+              'contribuicao': 0.45,
+              'pct_clientes': 0.1854,
+              'pct_base': 0.1181,
+              'clientes_com_valor': 28,
+              'vezes': 1.57,
+            },
+            {
+              'chave': 'porte',
+              'campo': 'Porte',
+              'valor': 'Demais',
+              'efeito': 'desfavorece',
+              'contribuicao': -0.3,
+              'pct_clientes': 0.0,
+              'pct_base': 0.02,
+              'clientes_com_valor': 0,
+              'vezes': 0.0,
+            },
+          ],
+        },
+      );
+
+      final e = await service.explicarEmpresa('g1', 'c1');
+
+      final query = verify(() => api.backendRequest(
+              'GET', 'carteira/prioridade/empresa',
+              body: any(named: 'body'), query: captureAny(named: 'query')))
+          .captured
+          .single as Map<String, String>;
+      expect(query, {'group_id': 'g1', 'company_id': 'c1'});
+      expect((e!.posicao, e.nota, e.totalLeads), (5, 92, 351));
+      expect(e.aFavor.single.campo, 'Estado');
+      expect(e.aFavor.single.clientesComValor, 28);
+      expect(e.contra.single.vezes, 0.0);
+      expect(e.semDado, ['Faturamento']);
+    });
+
+    test('explicarEmpresa devolve nulo se o lead não está na lista', () async {
+      when(() => api.backendRequest('GET', 'carteira/prioridade/empresa',
+              body: any(named: 'body'), query: any(named: 'query')))
+          .thenAnswer((_) async => {'disponivel': false});
+
+      expect(await service.explicarEmpresa('g1', 'c1'), isNull);
+    });
+
     test('sem cálculo ainda: estratégia nula e lista vazia', () async {
       when(() => api.backendRequest('GET', 'carteira/prioridade',
           body: any(named: 'body'), query: any(named: 'query'))).thenAnswer(

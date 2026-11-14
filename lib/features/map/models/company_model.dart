@@ -58,6 +58,16 @@ class Company {
     this.distance,
   });
 
+  /// Nome pra mostrar: fantasia, senão razão social, senão "Empresa". Texto em
+  /// branco não conta (a BrasilAPI manda a fantasia como string vazia).
+  String get displayName =>
+      _blankToNull(fantasyName) ?? _blankToNull(name) ?? 'Empresa';
+
+  static String? _blankToNull(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
   factory Company.fromJson(Map<String, dynamic> json) {
     double? parseCoordinate(dynamic value) {
       if (value == null) return null;
@@ -67,8 +77,8 @@ class Company {
 
     return Company(
       id: json['id'] as String,
-      name: json['nome_da_empresa'] as String?,
-      fantasyName: json['nome_fantasia'] as String?,
+      name: _blankToNull(json['nome_da_empresa'] as String?),
+      fantasyName: _blankToNull(json['nome_fantasia'] as String?),
       segment: json['segmento'] as String?,
       address: json['endereco_completo'] as String?,
       latitude: parseCoordinate(json['latitude']),

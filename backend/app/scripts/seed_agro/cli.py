@@ -6,6 +6,7 @@ Etapas (cada uma lê o arquivo da anterior):
   upload   cria as empresas no HubSpot (estágio A ou B)    (ESCREVE só com --apply)
   relate   cria um contato e um negócio fictícios por empresa  (ESCREVE só com --apply)
   promote  muda os clientes do estágio A para o B          (ESCREVE só com --apply)
+  rebalance leva a carteira que já está no HubSpot a N% de clientes (ESCREVE só com --apply; reversível)
   clean    apaga do HubSpot o que o lote criou             (ESCREVE só com --apply)
 
 Tudo o que escreve no HubSpot é DRY-RUN por padrão: sem --apply só mostra o
@@ -15,6 +16,7 @@ import argparse
 import asyncio
 import json
 import os
+import random
 import sys
 from datetime import date
 
@@ -82,7 +84,9 @@ async def cmd_select(args) -> int:
 
 def cmd_label(args) -> int:
     companies = [enrich.Company.from_json(x) for x in _read(args.inp)]
-    labeled = labeling.label(companies, seed=args.seed, today=date.today())
+    labeled = labeling.label(
+        companies, seed=args.seed, today=date.today(), client_rate=args.client_rate
+    )
     _write(args.out, [x.to_json() for x in labeled])
     s = labeling.summary(labeled)
     print(f"{s['total']} empresas · status: {s['por_status']}")
@@ -186,6 +190,74 @@ async def cmd_promote(args) -> int:
     return 0
 
 
+CLIENT_STAGES = {"customer", "evangelist"}
+LOST_STAGE = "other"
+
+
+def pick_promotions(found: dict[str, dict], rate: float, seed: int) -> dict[str, dict]:
+    """Quais leads viram cliente pra a carteira chegar a `rate` de clientes.
+
+    Os clientes que já existem contam; perdidos nunca são promovidos. O sorteio
+    é reprodutível (mesma `seed` + mesma carteira = mesma escolha)."""
+    total = len(found)
+    current = sum(1 for v in found.values() if v["lifecyclestage"] in CLIENT_STAGES)
+    need = round(total * rate) - current
+    leads = sorted(
+        (v["id"], cnpj, v["lifecyclestage"])
+        for cnpj, v in found.items()
+        if v["lifecyclestage"] not in CLIENT_STAGES | {LOST_STAGE}
+    )
+    if need <= 0:
+        return {}
+    chosen = random.Random(seed).sample(leads, min(need, len(leads)))
+    return {i: {"cnpj": cnpj, "antes": antes} for i, cnpj, antes in chosen}
+
+
+async def cmd_rebalance(args) -> int:
+    """Leva a carteira que JÁ está no HubSpot a `--rate` de clientes, sem
+    precisar dos arquivos do seed. Registra o que mudou pra poder desfazer."""
+    if args.desfazer:
+        previous = _read(args.desfazer)
+        by_stage: dict[str, dict[str, str]] = {}
+        for i, info in previous.items():
+            by_stage.setdefault(info["antes"] or "lead", {})[i] = info["antes"] or "lead"
+        print(f"Desfazer: devolver {len(previous)} empresas ao ciclo de vida anterior.")
+        if not args.apply:
+            print("DRY-RUN: nada foi alterado. Use --apply.")
+            return 0
+        seeder = hubspot.HubSpotSeeder(_token())
+        try:
+            for changes in by_stage.values():
+                await seeder.set_lifecycle(changes)
+        finally:
+            await seeder.aclose()
+        print("Revertido.")
+        return 0
+
+    seeder = hubspot.HubSpotSeeder(_token())
+    try:
+        found = await seeder.existing(args.lote)
+        picked = pick_promotions(found, args.rate, args.seed)
+        total = len(found)
+        current = sum(1 for v in found.values() if v["lifecyclestage"] in CLIENT_STAGES)
+        escopo = f"lote '{args.lote}'" if args.lote else "toda a conta (empresas com CNPJ)"
+        print(f"{escopo}: {total} empresas, {current} clientes hoje "
+              f"({current / total:.0%})." if total else f"{escopo}: nenhuma empresa.")
+        print(f"Promover {len(picked)} leads a cliente → "
+              f"{current + len(picked)} clientes ({(current + len(picked)) / max(total, 1):.0%}).")
+        if not args.apply:
+            print("DRY-RUN: nada foi alterado. Use --apply.")
+            return 0
+        if not picked:
+            return 0
+        _write(args.out, picked)
+        print(f"Registro do que vai mudar salvo em {args.out} (use --desfazer pra reverter).")
+        print(f"Atualizadas {await seeder.set_lifecycle({i: 'customer' for i in picked})} empresas.")
+    finally:
+        await seeder.aclose()
+    return 0
+
+
 async def cmd_clean(args) -> int:
     print(f"Apagar do HubSpot TODAS as empresas do lote '{args.lote}'.")
     if not args.apply:
@@ -220,6 +292,22 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--in", dest="inp", required=True)
     l.add_argument("--out", required=True)
     l.add_argument("--seed", type=int, default=42)
+    l.add_argument(
+        "--client-rate", type=float, default=labeling.TARGET_CLIENT_RATE,
+        help="fração esperada de clientes (ex.: 0.30); a taxa sorteada varia um pouco",
+    )
+
+    r = sub.add_parser(
+        "rebalance",
+        help="leva a carteira que já está no HubSpot a uma taxa de clientes (lê do próprio CRM)",
+    )
+    r.add_argument("--rate", type=float, default=0.30, help="fração de clientes (padrão 0.30)")
+    r.add_argument("--seed", type=int, default=42)
+    r.add_argument("--lote", default=None,
+                   help="só as empresas deste lote do seed; sem isso, toda empresa com CNPJ")
+    r.add_argument("--out", default="alteracoes.json", help="registro do que mudou (pra desfazer)")
+    r.add_argument("--desfazer", metavar="ARQUIVO", help="reverte o que um --out anterior registrou")
+    r.add_argument("--apply", action="store_true", help="de fato escreve no HubSpot")
 
     for name, text in (("upload", "cria no HubSpot"), ("relate", "contato + negócio fictícios por empresa"), ("promote", "estágio A → B"),
                        ("clean", "apaga o lote")):
@@ -239,7 +327,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     handler = {"select": cmd_select, "label": cmd_label, "upload": cmd_upload,
-               "relate": cmd_relate, "promote": cmd_promote, "clean": cmd_clean}[args.cmd]
+               "relate": cmd_relate, "promote": cmd_promote, "rebalance": cmd_rebalance,
+               "clean": cmd_clean}[args.cmd]
     result = handler(args)
     return asyncio.run(result) if asyncio.iscoroutine(result) else result
 
