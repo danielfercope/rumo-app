@@ -84,10 +84,9 @@ class ProfilePage extends ConsumerWidget {
                     _InfoTile(
                       icon: CupertinoIcons.building_2_fill,
                       label: 'Cadastrar empresas',
-                      value:
-                          ref.watch(canRegisterCompanyProvider)
-                              ? 'Permitido'
-                              : 'Sem permissão',
+                      value: ref.watch(canRegisterCompanyProvider)
+                          ? 'Permitido'
+                          : 'Sem permissão',
                     ),
                   ],
                 ),

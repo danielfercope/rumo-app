@@ -169,8 +169,7 @@ void main() {
       expect(find.text('Sem cadastro no SICAF'), findsOneWidget);
     });
 
-    testWidgets('cidade sem dado: o bloco de economia some',
-        (tester) async {
+    testWidgets('cidade sem dado: o bloco de economia some', (tester) async {
       await pumpCards(
           tester,
           FakeEnrichmentService({
@@ -323,7 +322,8 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('google-foto-abrir')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('google-foto-ampliada')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('google-foto-ampliada')), findsOneWidget);
       expect(find.byType(InteractiveViewer), findsOneWidget);
       // o crédito do autor continua visível na foto ampliada
       expect(find.text('Foto: Alexandre de Castro · Google'), findsNWidgets(2));
@@ -341,8 +341,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('google-foto-abrir')));
       await tester.pumpAndSettle();
 
-      await tester.drag(
-          find.byType(InteractiveViewer), const Offset(0, 300));
+      await tester.drag(find.byType(InteractiveViewer), const Offset(0, 300));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('google-foto-ampliada')), findsNothing);
     });
@@ -353,8 +352,10 @@ void main() {
       await pumpModal(
           tester,
           Company(id: 'c1', name: 'WEG', cnpj: '07175725000160'),
-          FakeEnrichmentService(
-              {...allSources(), EnrichmentSource.google: envelope('google', semFoto)}));
+          FakeEnrichmentService({
+            ...allSources(),
+            EnrichmentSource.google: envelope('google', semFoto)
+          }));
       expect(find.byKey(const ValueKey('google-foto')), findsNothing);
       expect(find.byKey(const ValueKey('google-nota')), findsOneWidget);
       expect(find.text('weg.net'), findsOneWidget);
