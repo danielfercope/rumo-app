@@ -332,7 +332,8 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('membro comum também entra noutra com código e ela vira a ativa',
+    testWidgets(
+        'membro comum também entra noutra com código e ela vira a ativa',
         (tester) async {
       when(() => service.joinByHash('abc123'))
           .thenAnswer((_) async => makeGroup('g2', 'Outra'));

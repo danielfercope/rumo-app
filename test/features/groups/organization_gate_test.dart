@@ -164,7 +164,8 @@ void main() {
           ['Radar', 'Leads', 'Perfil', 'Organização']);
     });
 
-    testWidgets('organização SEM CRM: admin vê só Organização e Perfil, '
+    testWidgets(
+        'organização SEM CRM: admin vê só Organização e Perfil, '
         'com a conexão do CRM no topo', (tester) async {
       groups = [fakeMyGroup(role: 'admin')];
       await pump(tester, child: const MainNavigation());
@@ -189,12 +190,13 @@ void main() {
     testWidgets('organização COM CRM libera Radar e Leads', (tester) async {
       groups = [fakeMyGroup(role: 'member')];
       when(() => carteira.buscarConexao(any())).thenAnswer((_) async =>
-          const CrmConnection(id: 'c1', provedor: 'hubspot', situacao: 'ativa'));
+          const CrmConnection(
+              id: 'c1', provedor: 'hubspot', situacao: 'ativa'));
       await pump(tester,
           child: const CupertinoPageScaffold(
               child: Center(child: Text('APP-PRONTO'))));
-      final container = ProviderScope.containerOf(
-          tester.element(find.text('APP-PRONTO')));
+      final container =
+          ProviderScope.containerOf(tester.element(find.text('APP-PRONTO')));
       await container.read(crmConnectionProvider('g1').future);
       expect(container.read(activeGroupHasCrmProvider).valueOrNull, isTrue);
     });

@@ -393,6 +393,19 @@ void main() {
 
     testWidgets('tocar num marcador abre os detalhes da empresa',
         (tester) async {
+      // "a" num ponto só dele: no fixture as 4 empresas ficam na mesma
+      // coordenada, e o cliente "b" é desenhado por cima (prioridade maior) —
+      // o toque no "a" caía no "b" conforme o tamanho dos ícones.
+      repo.companies = [
+        buildCompany(
+            id: 'a',
+            fantasyName: 'Perto',
+            isClient: false,
+            latitude: -26.475,
+            longitude: -49.065)
+          ..distance = 1.0,
+        ...repo.companies.where((c) => c.id != 'a'),
+      ];
       await pumpRadar(tester, useGoogle: false);
       await tester.pump();
 

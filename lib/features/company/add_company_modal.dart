@@ -178,7 +178,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
       } catch (e) {
         setState(() => _errorMessage =
             'A empresa foi salva na carteira, mas não chegou ao CRM: $e\n'
-            'Toque em "Salvar e Enviar para CRM" de novo para reenviar.');
+                'Toque em "Salvar e Enviar para CRM" de novo para reenviar.');
         return;
       }
 
