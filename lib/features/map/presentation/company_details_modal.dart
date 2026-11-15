@@ -113,8 +113,8 @@ class CompanyDetailsModal extends ConsumerWidget {
           icon: CupertinoIcons.phone_fill,
           label: 'Telefone',
           value: telefone,
-          onTap: () => _launch(
-              'tel:${telefone.replaceAll(RegExp(r'[^0-9+]'), '')}'),
+          onTap: () =>
+              _launch('tel:${telefone.replaceAll(RegExp(r'[^0-9+]'), '')}'),
           onCopy: () => _copyToClipboard(context, telefone),
         ),
       if (endereco != null || distance != null)
@@ -135,8 +135,7 @@ class CompanyDetailsModal extends ConsumerWidget {
               ? null
               : () => _copyToClipboard(context, endereco),
         ),
-      if (hoje != null)
-        _HoursRow(today: hoje, horarios: google!.horarios),
+      if (hoje != null) _HoursRow(today: hoje, horarios: google!.horarios),
       if (email != null)
         _InfoRow(
           icon: CupertinoIcons.mail_solid,
@@ -206,8 +205,7 @@ class CompanyDetailsModal extends ConsumerWidget {
                       child: Text(
                           'Telefone, endereço e horário do Google · confira se é a mesma empresa',
                           style: TextStyle(
-                              fontSize: 10,
-                              color: CupertinoColors.systemGrey)),
+                              fontSize: 10, color: CupertinoColors.systemGrey)),
                     ),
                 ],
                 const SizedBox(height: 16),
@@ -684,6 +682,7 @@ class _InfoRow extends StatelessWidget {
   final String? detail;
   final VoidCallback? onTap;
   final VoidCallback? onCopy;
+
   /// Ação ao lado do [detail] (ex.: "Traçar Rota" junto da distância).
   final Widget? detailAction;
 
@@ -825,9 +824,7 @@ class _HoursRowState extends State<_HoursRow> {
               ),
             ),
             Icon(
-                _open
-                    ? CupertinoIcons.chevron_up
-                    : CupertinoIcons.chevron_down,
+                _open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down,
                 size: 14,
                 color: CupertinoColors.systemGrey),
           ],

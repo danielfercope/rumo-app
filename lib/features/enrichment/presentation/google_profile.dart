@@ -278,7 +278,8 @@ class GoogleRatingLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = place;
-    final closedForGood = g.situacao != null && g.situacao != 'Em funcionamento';
+    final closedForGood =
+        g.situacao != null && g.situacao != 'Em funcionamento';
     final status = closedForGood
         ? (g.situacao!, CupertinoColors.systemRed)
         : g.abertoAgora == true
