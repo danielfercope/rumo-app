@@ -21,7 +21,6 @@ class CompanyService {
     final isClient = _isClientFromType(filters);
     return {
       if (filters?.segment?.isNotEmpty == true) 'p_segment': filters!.segment,
-      if (filters?.product?.isNotEmpty == true) 'p_product': filters!.product,
       if (filters?.state?.isNotEmpty == true) 'p_state': filters!.state,
       if (filters?.city?.isNotEmpty == true) 'p_city': filters!.city,
       if (filters?.cnae?.isNotEmpty == true) 'p_cnae': filters!.cnae,
@@ -73,7 +72,6 @@ class CompanyService {
     final data = response as Map<String, dynamic>;
     return {
       'segments': List<String>.from(data['segments'] ?? []),
-      'products': List<String>.from(data['products'] ?? []),
       'states': List<String>.from(data['states'] ?? []),
       'cnaes': List<String>.from(data['cnaes'] ?? []),
       'stateToCities':

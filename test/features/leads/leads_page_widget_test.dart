@@ -41,7 +41,6 @@ void main() {
       ],
       options: {
         'segments': ['Varejo'],
-        'products': ['P1'],
         'states': ['SC'],
         'cnaes': ['4712'],
         'cities': ['Joinville'],
@@ -133,7 +132,6 @@ void main() {
     final container = await pumpPage(tester);
     container.read(mapFiltersProvider.notifier)
       ..setSegment('Varejo')
-      ..setProduct('P1')
       ..setType('client')
       ..setUf('SC')
       ..setCity('Joinville')
@@ -142,13 +140,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Varejo'), findsWidgets);
-    expect(find.text('P1'), findsWidgets);
     expect(find.text('Cliente'), findsOneWidget);
     expect(find.text('SC'), findsWidgets);
     expect(find.text('Joinville'), findsWidgets);
     expect(find.textContaining('CNAE: 4712-1/00-mu…'), findsOneWidget);
     expect(find.text('20 km'), findsOneWidget);
-    expect(find.text('7'), findsOneWidget); // badge de contagem
+    expect(find.text('6'), findsOneWidget); // badge de contagem
 
     await tester.ensureVisible(find.text('Limpar tudo'));
     await tester.pumpAndSettle();
@@ -162,7 +159,6 @@ void main() {
     final container = await pumpPage(tester);
     container.read(mapFiltersProvider.notifier)
       ..setSegment('Varejo')
-      ..setProduct('P1')
       ..setType('lead')
       ..setUf('SC')
       ..setCity('Joinville')

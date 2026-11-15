@@ -10,7 +10,6 @@ const List<double> radiusPresetsKm = [5, 10, 30, 100];
 
 class MapFilters {
   final String? segment;
-  final String? product;
   final String? type;
   final String? state;
   final String? city;
@@ -19,7 +18,6 @@ class MapFilters {
 
   MapFilters({
     this.segment,
-    this.product,
     this.type,
     this.state,
     this.city,
@@ -30,8 +28,6 @@ class MapFilters {
   MapFilters copyWith({
     String? segment,
     bool clearSegment = false,
-    String? product,
-    bool clearProduct = false,
     String? type,
     bool clearType = false,
     String? state,
@@ -47,7 +43,6 @@ class MapFilters {
 
     return MapFilters(
       segment: clearSegment ? null : (segment ?? this.segment),
-      product: clearProduct ? null : (product ?? this.product),
       type: clearType ? null : (type ?? this.type),
       state: effectiveState,
       // Uma cidade só faz sentido dentro do estado a que pertence: se o
@@ -61,7 +56,6 @@ class MapFilters {
 
   bool get isEmpty =>
       segment == null &&
-      product == null &&
       type == null &&
       state == null &&
       city == null &&
@@ -75,9 +69,6 @@ class MapFiltersNotifier extends Notifier<MapFilters> {
 
   void setSegment(String? v) =>
       state = state.copyWith(segment: v, clearSegment: v == null);
-
-  void setProduct(String? v) =>
-      state = state.copyWith(product: v, clearProduct: v == null);
 
   void setType(String? v) =>
       state = state.copyWith(type: v, clearType: v == null);
@@ -108,7 +99,6 @@ final filterOptionsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   if (groupId == null) {
     return {
       'segments': <String>[],
-      'products': <String>[],
       'states': <String>[],
       'cnaes': <String>[],
       'stateToCities': <String, List<String>>{},

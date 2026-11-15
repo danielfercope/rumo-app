@@ -70,9 +70,6 @@ class _FilterModalState extends ConsumerState<FilterModal> {
 
                 List<String> opts(String key) =>
                     (options[key] as List? ?? []).cast<String>();
-                // Filtro sem nenhuma opção na carteira (ex.: produto, quando a
-                // base veio do CRM sem esse dado) não aparece.
-                final products = opts('products');
                 final states = opts('states');
                 final cnaes = opts('cnaes');
 
@@ -80,12 +77,6 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                   children: [
                     _buildRadiusSection(),
                     const SizedBox(height: 24),
-                    if (products.isNotEmpty || _tempFilters.product != null)
-                      _buildSearchableField(
-                          'Produto', _tempFilters.product, products, (v) {
-                        setState(() => _tempFilters = _tempFilters.copyWith(
-                            product: v, clearProduct: v == null));
-                      }),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
                       child: Text('Tipo de Empresa',

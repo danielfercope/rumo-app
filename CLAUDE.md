@@ -246,8 +246,8 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 
 | Função | Parâmetros | Retorno |
 |---|---|---|
-| `search_companies` | lat, lon, radius_km, query, segment, product, state, city, cnae, is_client, limit, **group_id (obrigatório)** | `List<Company>` — unifica busca por raio, texto e filtros. Só devolve a **carteira da organização** `group_id` (exige ser membro); `cliente` e `status_carteira` vêm dela. Sem `group_id` ou sem ser membro: erro |
-| `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` — roda com as permissões de quem chama, então só vê opções das empresas das próprias organizações |
+| `search_companies` | lat, lon, radius_km, query, segment, state, city, cnae, is_client, limit, **group_id (obrigatório)** (o parâmetro `product` ainda existe no banco, mas o app não filtra mais por produto) | `List<Company>` — unifica busca por raio, texto e filtros. Só devolve a **carteira da organização** `group_id` (exige ser membro); `cliente` e `status_carteira` vêm dela. Sem `group_id` ou sem ser membro: erro |
+| `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` (o app ignora `products`) — roda com as permissões de quem chama, então só vê opções das empresas das próprias organizações |
 | `register_company` | group_id, data (jsonb) | Cadastro manual: cria a empresa no catálogo (sem sobrescrever uma que já exista) e a põe na carteira da organização como `lead`/`manual`. Exige membro + (admin da organização ou `can_add_company()`). Devolve `{company_id, already_in_portfolio}` — nunca revela se a empresa já existia |
 | `portfolio_has_cnpj` | group_id, cnpj | `boolean` — o CNPJ está na carteira DESSA organização? (Não dá pra descobrir se existe em outra) |
 | `ensure_profile` | nome, departamento | Cria/retorna o `profile` do usuário autenticado |

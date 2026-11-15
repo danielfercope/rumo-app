@@ -92,7 +92,6 @@ void main() {
       ],
       options: {
         'segments': <String>[],
-        'products': <String>[],
         'states': <String>[],
         'cnaes': <String>[],
         'cities': <String>[],
