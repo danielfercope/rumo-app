@@ -22,6 +22,10 @@ jobs:
       - name: Instalar o Flutter SDK
         uses: subosito/flutter-action@v2
         with:
+          # Versão fixa, a mesma do desenvolvimento: o "stable" mais novo
+          # depreciou package:flutter/cupertino.dart e quebrava o analyze.
+          # Atualizar o Flutter = mudar aqui e no ambiente local juntos.
+          flutter-version: 3.41.3
           channel: stable
           cache: true
 
@@ -50,6 +54,10 @@ jobs:
       - name: Instalar o Flutter SDK
         uses: subosito/flutter-action@v2
         with:
+          # Versão fixa, a mesma do desenvolvimento: o "stable" mais novo
+          # depreciou package:flutter/cupertino.dart e quebrava o analyze.
+          # Atualizar o Flutter = mudar aqui e no ambiente local juntos.
+          flutter-version: 3.41.3
           channel: stable
           cache: true
 
