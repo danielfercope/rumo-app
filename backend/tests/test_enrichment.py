@@ -242,15 +242,20 @@ async def test_comex_sem_registro_em_dois_anos():
             await regional.comex(c, IBGE, today=date(2026, 11, 12))
 
 
+
+def sidra(values: dict, nome: str | None = None) -> list[dict]:
+    """Resposta da API SIDRA: cabeçalho + uma linha por ano."""
+    header = {"NC": "Nível Territorial (Código)", "V": "Valor", "D1N": "Município", "D3C": "Ano (Código)"}
+    rows = [{"V": v, "D3C": ano, **({"D1N": nome} if nome else {})}
+            for ano, v in values.items()]
+    return [header, *rows]
+
 @respx.mock
 async def test_ibge_pib_per_capita_usa_a_populacao_do_ano_mais_proximo():
-    def serie(values):
-        return [{"resultados": [{"series": [{"serie": values}]}]}]
-
-    respx.get(url__regex=r".*/agregados/6579/.*").respond(
-        200, json=serie({"2021": "190000", "2024": "200000", "2025": "202000"}))
-    respx.get(url__regex=r".*/agregados/5938/.*").respond(
-        200, json=serie({"2023": "15000000"}))
+    pop = respx.get(url__regex=r".*/t/6579/n6/.*").respond(
+        200, json=sidra({"2021": "190000", "2024": "200000", "2025": "202000"}))
+    respx.get(url__regex=r".*/t/5938/n6/.*").respond(
+        200, json=sidra({"2023": "15000000", "2022": "..."}))
     async with httpx.AsyncClient() as c:
         out = await regional.municipio(c, IBGE)
 
@@ -259,6 +264,9 @@ async def test_ibge_pib_per_capita_usa_a_populacao_do_ano_mais_proximo():
     assert out["pib"] == {"valor": 15_000_000_000.0, "ano": "2023"}
     # 2023 não tem estimativa: usa 2024 (mais próximo)
     assert out["pib_per_capita"] == {"valor": 75000.0, "ano": "2023"}
+    # API SIDRA (a servicodados recusa conexões de fora do Brasil)
+    assert str(pop.calls.last.request.url).startswith(
+        "https://apisidra.ibge.gov.br/values/t/6579/n6/4208906/v/9324/p/last%2010")
 
 
 # ─── Google ─────────────────────────────────────────────────────────────
@@ -456,10 +464,8 @@ async def test_servico_vazio_tambem_fica_em_cache(env):
 async def test_servico_regional_usa_o_municipio_da_receita_e_compartilha_por_cidade(env):
     svc, db, _, _ = env
     respx.get(receita.BRASILAPI_URL.format(cnpj=CNPJ)).respond(200, json=brasilapi_payload())
-    respx.get(url__regex=r".*/agregados/6579/.*").respond(
-        200, json=[{"resultados": [{"series": [{"serie": {"2025": "200000"}}]}]}])
-    respx.get(url__regex=r".*/agregados/5938/.*").respond(
-        200, json=[{"resultados": [{"series": [{"serie": {"2023": "1000"}}]}]}])
+    respx.get(url__regex=r".*/t/6579/n6/.*").respond(200, json=sidra({"2025": "200000"}))
+    respx.get(url__regex=r".*/t/5938/n6/.*").respond(200, json=sidra({"2023": "1000"}))
 
     out = await svc.get("u1", "g1", CNPJ, "municipio")
 
@@ -618,10 +624,8 @@ def test_rota_erros(api):
 
 @respx.mock
 async def test_ibge_traz_o_nome_oficial_com_acento():
-    serie = [{"resultados": [{"series": [{
-        "localidade": {"id": "4208906", "nome": "Jaraguá do Sul (SC)"},
-        "serie": {"2025": "200000"}}]}]}]
-    respx.get(url__regex=r".*/agregados/.*").respond(200, json=serie)
+    respx.get(url__regex=r".*/t/.*/n6/.*").respond(
+        200, json=sidra({"2025": "200000"}, nome="Jaraguá do Sul (SC)"))
     async with httpx.AsyncClient() as c:
         out = await regional.municipio(c, IBGE)
     assert out["nome_ibge"] == "Jaraguá do Sul (SC)"
