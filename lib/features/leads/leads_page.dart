@@ -75,7 +75,6 @@ class _LeadsPageState extends ConsumerState<LeadsPage> {
   int _activeFilterCount(MapFilters filters) {
     int count = 0;
     if (filters.segment != null) count++;
-    if (filters.product != null) count++;
     if (filters.type != null) count++;
     if (filters.state != null) count++;
     if (filters.city != null) count++;
@@ -346,11 +345,6 @@ class _ActiveFiltersRow extends ConsumerWidget {
             _FilterChip(
               label: filters.segment!,
               onRemove: () => notifier.setSegment(null),
-            ),
-          if (filters.product != null)
-            _FilterChip(
-              label: filters.product!,
-              onRemove: () => notifier.setProduct(null),
             ),
           if (filters.type != null)
             _FilterChip(

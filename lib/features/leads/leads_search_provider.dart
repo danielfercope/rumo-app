@@ -19,7 +19,6 @@ final leadsSearchQueryProvider =
 
 bool _hasNonRadiusFilter(MapFilters f) =>
     f.segment != null ||
-    f.product != null ||
     f.type != null ||
     f.state != null ||
     f.city != null ||

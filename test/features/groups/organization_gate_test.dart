@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/features/auth/providers/auth_provider.dart';
+import 'package:rumo_app/features/carteira/models/crm_models.dart';
 import 'package:rumo_app/features/carteira/providers/carteira_provider.dart';
 import 'package:rumo_app/features/carteira/services/carteira_service.dart';
 import 'package:rumo_app/features/groups/models/group_member_model.dart';
@@ -154,13 +155,48 @@ void main() {
   });
 
   group('abas por situação do usuário', () {
-    test('sem organização: só Organização e Perfil', () {
-      expect(mainTabLabels(hasOrganization: false), ['Organização', 'Perfil']);
+    test('sem organização com CRM: só Organização e Perfil', () {
+      expect(mainTabLabels(canUseApp: false), ['Organização', 'Perfil']);
     });
 
-    test('com organização: Radar, Leads, Perfil e Organização', () {
-      expect(mainTabLabels(hasOrganization: true),
+    test('organização com CRM: Radar, Leads, Perfil e Organização', () {
+      expect(mainTabLabels(canUseApp: true),
           ['Radar', 'Leads', 'Perfil', 'Organização']);
+    });
+
+    testWidgets('organização SEM CRM: admin vê só Organização e Perfil, '
+        'com a conexão do CRM no topo', (tester) async {
+      groups = [fakeMyGroup(role: 'admin')];
+      await pump(tester, child: const MainNavigation());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Radar'), findsNothing);
+      expect(find.text('Leads'), findsNothing);
+      expect(find.text('Conectar HubSpot'), findsOneWidget);
+    });
+
+    testWidgets('organização SEM CRM: membro vê que falta o admin conectar',
+        (tester) async {
+      groups = [fakeMyGroup(role: 'member')];
+      await pump(tester, child: const MainNavigation());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Radar'), findsNothing);
+      expect(find.byKey(const ValueKey('crm-pendente')), findsOneWidget);
+      expect(find.text('Conectar HubSpot'), findsNothing);
+    });
+
+    testWidgets('organização COM CRM libera Radar e Leads', (tester) async {
+      groups = [fakeMyGroup(role: 'member')];
+      when(() => carteira.buscarConexao(any())).thenAnswer((_) async =>
+          const CrmConnection(id: 'c1', provedor: 'hubspot', situacao: 'ativa'));
+      await pump(tester,
+          child: const CupertinoPageScaffold(
+              child: Center(child: Text('APP-PRONTO'))));
+      final container = ProviderScope.containerOf(
+          tester.element(find.text('APP-PRONTO')));
+      await container.read(crmConnectionProvider('g1').future);
+      expect(container.read(activeGroupHasCrmProvider).valueOrNull, isTrue);
     });
 
     testWidgets('sem organização a barra não tem Radar nem Leads',

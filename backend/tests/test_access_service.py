@@ -1,6 +1,10 @@
 import pytest
 
-from app.errors import CompanyNotInPortfolioError, NotGroupMemberError
+from app.errors import (
+    CompanyNotInPortfolioError,
+    CrmNotAvailableError,
+    NotGroupMemberError,
+)
 from app.services.access_service import AccessService
 
 
@@ -12,7 +16,9 @@ class FakeDb:
         self.members = [
             {"group_id": "g1", "user_id": "u1"},
             {"group_id": "g2", "user_id": "u2"},
+            {"group_id": "g3", "user_id": "u3"},
         ]
+        self.conexoes = {"g1", "g2"}  # g3 não conectou CRM
         self.companies = {"c1": "11111111000111", "c2": "22222222000122"}
         self.carteira = [
             {"group_id": "g1", "company_id": "c1"},
@@ -32,6 +38,10 @@ class FakeDb:
                 if (g is None or r["group_id"] == g) and (u is None or r["user_id"] == u)
             ]
             return rows[: int(params.get("limit", len(rows)))]
+        if table == "crm_conexoes":
+            filtro = params["group_id"]
+            ids = filtro[4:-1].split(",") if filtro.startswith("in.(") else [filtro[3:]]
+            return [{"group_id": g} for g in ids if g in self.conexoes][:1]
         assert table == "carteira_empresas"
         assert "companies!inner" in params["select"], "o filtro por CNPJ exige inner"
         g, cnpj = self._eq(params, "group_id"), self._eq(params, "companies.cnpj")
@@ -61,6 +71,14 @@ async def test_qualquer_organizacao(access):
     await access.require_any_organization("u2")
     with pytest.raises(NotGroupMemberError, match="Entre em uma organização"):
         await access.require_any_organization("sem-organizacao")
+
+
+async def test_organizacao_sem_crm_nao_usa_o_sistema(access):
+    with pytest.raises(NotGroupMemberError, match="não conectou um CRM"):
+        await access.require_any_organization("u3")
+    await access.require_crm("g1")
+    with pytest.raises(CrmNotAvailableError, match="não conectou um CRM"):
+        await access.require_crm("g3")
 
 
 async def test_cnpj_da_carteira_passa_com_ou_sem_mascara(access):

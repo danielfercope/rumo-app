@@ -129,6 +129,8 @@ void main() {
       final result = await service.getFilterOptions();
 
       expect(result['segments'], ['Varejo']);
+      // produto não é mais filtro: ignorado mesmo se o servidor mandar
+      expect(result.containsKey('products'), isFalse);
       expect(result['stateToCities'], {
         'SC': ['Joinville']
       });

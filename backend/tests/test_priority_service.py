@@ -165,8 +165,8 @@ async def test_com_clientes_suficientes_usa_o_perfil_guarda_o_modelo_e_explica(d
         add(db, i, "cliente", segmento="farmácia")
     parecido = add(db, 100, "lead", segmento="farmácia")
     diferente = add(db, 101, "lead", segmento="restaurante")
-    for i in range(200, 260):  # base: o resto do mercado
-        add(db, i, "lead", segmento="restaurante", group=OTHER)
+    for i in range(200, 260):  # o resto da PRÓPRIA carteira (fora do ranking)
+        add(db, i, "perdido", segmento="restaurante")
 
     await service(db).recalculate(GROUP)
 
@@ -231,6 +231,74 @@ async def test_clear_apaga_resultado_so_da_organizacao(db):
 async def test_has_result(db):
     add(db, 1, "lead", inter=1)
     assert not await service(db).has_result(GROUP)
+    await service(db).recalculate(GROUP)
+    assert await service(db).has_result(GROUP)
+
+
+# ─── Isolamento entre organizações ──────────────────────────────────────
+
+
+def _perfil(db, group, seed_offset=0):
+    for i in range(MIN_CLIENTS):
+        add(db, seed_offset + i, "cliente", group=group, segmento="farmácia")
+    add(db, seed_offset + 100, "lead", group=group, segmento="farmácia")
+    add(db, seed_offset + 101, "lead", group=group, segmento="restaurante")
+    for i in range(200, 220):
+        add(db, seed_offset + i, "perdido", group=group, segmento="restaurante")
+
+
+async def test_perfil_nao_depende_da_carteira_de_outra_organizacao(db):
+    """A mesma carteira dá exatamente o mesmo resultado (notas, motivos e
+    contagens do modelo), exista ou não outra organização com outros dados."""
+    _perfil(db, GROUP)
+    await service(db).recalculate(GROUP)
+    sozinha = (stored(db), db.tables["prioridade_modelos"][0]["modelo"])
+
+    outra = FakeDb()
+    outra.tables["group_members"] = db.tables["group_members"]
+    _perfil(outra, GROUP)
+    for i in range(5000, 5300):  # muita coisa, e bem diferente, em OUTRA org
+        add(outra, i, "cliente" if i % 2 else "lead", group=OTHER,
+            segmento="restaurante")
+    await service(outra).recalculate(GROUP)
+    com_outra = (stored(outra), outra.tables["prioridade_modelos"][0]["modelo"])
+
+    def sem_data(rows):
+        return [{k: v for k, v in r.items() if k != "calculado_em"} for r in rows]
+
+    assert sem_data(sozinha[0]) == sem_data(com_outra[0])
+    assert sozinha[1] == com_outra[1]
+    # a "base" do modelo é só a carteira da organização (12 + 20 empresas)
+    assert sozinha[1]["tables"]["segmento"]["n_base"] == MIN_CLIENTS + 2 + 20
+    assert all("da sua carteira" in m for r in sozinha[0] for m in r["motivos"])
+
+
+async def test_recalculo_le_so_a_carteira_da_organizacao(db):
+    _perfil(db, GROUP)
+    _perfil(db, OTHER, seed_offset=1000)
+    lidas = []
+    original = db.select
+
+    async def spy(table, params):
+        lidas.append((table, params.get("group_id")))
+        return await original(table, params)
+
+    db.select = spy
+    await service(db).recalculate(GROUP)
+
+    # nenhuma leitura direta do catálogo global, nem de outra organização
+    assert lidas and all(t == "carteira_empresas" for t, _ in lidas)
+    assert all(g == f"eq.{GROUP}" for _, g in lidas)
+
+
+async def test_modelo_de_versao_antiga_forca_recalculo_e_nao_e_explicado(db):
+    parecido, _ = await _carteira_de_perfil(db)
+    db.tables["prioridade_modelos"][0]["modelo"]["version"] = 1  # catálogo global
+
+    assert not await service(db).has_result(GROUP)
+    out = await service(db).explain("u1", GROUP, parecido)
+    assert out["disponivel"] and out["fatores"] == []
+
     await service(db).recalculate(GROUP)
     assert await service(db).has_result(GROUP)
 
@@ -315,7 +383,7 @@ async def _carteira_de_perfil(db):
     parecido = add(db, 100, "lead", segmento="farmácia")
     diferente = add(db, 101, "lead", segmento="restaurante")
     for i in range(200, 260):
-        add(db, i, "lead", segmento="restaurante", group=OTHER)
+        add(db, i, "perdido", segmento="restaurante")
     await service(db).recalculate(GROUP)
     return parecido, diferente
 

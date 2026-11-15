@@ -81,7 +81,6 @@ void main() {
     });
 
     for (final setter in <String, void Function(MapFiltersNotifier)>{
-      'product': (n) => n.setProduct('p'),
       'type': (n) => n.setType('client'),
       'state': (n) => n.setUf('SC'),
       'city': (n) => n.setCity('Joinville'),

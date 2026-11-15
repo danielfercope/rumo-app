@@ -2,8 +2,9 @@
 
 Dois lados, de propósito separados:
   - `recalculate(group_id)` roda ao fim de cada sincronização que mudou a
-    carteira (CarteiraSyncService). É o único que lê a base de empresas;
-    grava o modelo (`prioridade_modelos`) e a lista ordenada de leads
+    carteira (CarteiraSyncService). Lê SÓ a carteira da organização
+    (`carteira_empresas` com os dados de cada empresa embutidos); grava o
+    modelo (`prioridade_modelos`) e a lista ordenada de leads
     (`carteira_prioridade`).
   - `ranking(uid, group_id, limit)` é o que o endpoint chama a cada requisição
     e só LÊ o que já foi gravado: nenhuma varredura de `companies`.
@@ -13,6 +14,12 @@ A estratégia vem do tamanho da carteira (`choose_strategy`):
     mais antigo (não há o que aprender com tão poucos exemplos);
   - clientes suficientes → "perfil": parecença com o perfil dos clientes
     (priority_score.py), com motivos.
+
+Isolamento: a carteira de uma organização nunca se mistura com a de outra.
+O perfil compara os clientes com a PRÓPRIA carteira (clientes, leads e
+perdidos da organização), e não com o catálogo global `companies`, que
+contém empresas das outras organizações. Nenhuma contagem, nota ou motivo
+depende do que outra organização tem.
 Os degraus seguintes (regressão logística, GBM) entram em `choose_strategy`."""
 
 import asyncio
@@ -23,14 +30,17 @@ from ..errors import NotGroupMemberError
 from .cold_start_priority import rank_by_interaction
 from .cold_start_priority import reason as interaction_reason
 from .postgrest_client import PostgrestClient
-from .priority_score import MIN_CLIENTS, PriorityModel, fit, percentile_scores
+from .priority_score import (
+    MIN_CLIENTS,
+    MODEL_VERSION,
+    PriorityModel,
+    fit,
+    percentile_scores,
+)
 
 logger = logging.getLogger("uvicorn.error.priority")
 
 PAGE = 1000
-# Teto de segurança da leitura da base inteira (companies é global); acima
-# disso o perfil é calculado sobre os primeiros registros.
-UNIVERSE_MAX_ROWS = 50_000
 WRITE_CHUNK = 500
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
@@ -158,8 +168,13 @@ class PriorityService:
                 "companies",
                 {"id": f"eq.{company_id}", "select": COMPANY_COLUMNS, "limit": "1"},
             )
-            if companies:
+            try:
+                # Modelo de versão antiga (ex.: comparado com o catálogo
+                # global) não é reaplicado: some até o próximo recálculo.
                 model = PriorityModel.from_json(meta["modelo"])
+            except ValueError:
+                model = None
+            if companies and model is not None:
                 out["confiavel"] = model.reliable
                 out["fatores"], out["sem_dado"] = _factors(
                     model, companies[0], meta["n_clientes"]
@@ -178,19 +193,29 @@ class PriorityService:
         return out
 
     async def has_result(self, group_id: str) -> bool:
+        """Há um resultado válido? Um perfil gravado por uma versão anterior do
+        modelo (ex.: a que comparava com o catálogo global) não conta, pra o
+        próximo ciclo recalcular mesmo sem mudança na carteira."""
         rows = await self._db.select(
             "prioridade_modelos",
-            {"group_id": f"eq.{group_id}", "select": "group_id", "limit": "1"},
+            {"group_id": f"eq.{group_id}", "select": "estrategia,modelo", "limit": "1"},
         )
-        return bool(rows)
+        if not rows:
+            return False
+        row = rows[0]
+        if row.get("estrategia") != STRATEGY_PROFILE:
+            return True
+        return (row.get("modelo") or {}).get("version") == MODEL_VERSION
 
     async def recalculate(self, group_id: str) -> None:
+        # Única leitura: a carteira DESTA organização, com os dados de cada
+        # empresa embutidos. Nada de fora dela entra no cálculo.
         carteira = await self._select_all(
             "carteira_empresas",
             {
                 "group_id": f"eq.{group_id}",
                 "select": "company_id,status,crm_criado_em,ultima_interacao_em,"
-                "num_interacoes",
+                f"num_interacoes,companies({COMPANY_COLUMNS})",
                 "order": "company_id",
             },
         )
@@ -201,7 +226,7 @@ class PriorityService:
         if strategy == STRATEGY_INTERACTION:
             rows, model_json = self._by_interaction(leads), None
         else:
-            rows, model_json = await self._by_profile(clients, leads)
+            rows, model_json = await self._by_profile(carteira)
 
         now = self._clock().isoformat()
         for i in range(0, len(rows), WRITE_CHUNK):
@@ -253,21 +278,15 @@ class PriorityService:
             for i, row in enumerate(rank_by_interaction(leads))
         ]
 
-    async def _by_profile(
-        self, clients: list[dict], leads: list[dict]
-    ) -> tuple[list[dict], dict]:
-        universe = await self._select_all(
-            "companies",
-            {"select": COMPANY_COLUMNS, "order": "id"},
-            max_rows=UNIVERSE_MAX_ROWS,
-        )
-        by_id = {c["id"]: c for c in universe}
+    async def _by_profile(self, carteira: list[dict]) -> tuple[list[dict], dict]:
+        # Universo = a carteira inteira da organização (clientes, leads e
+        # perdidos); os clientes estão incluídos, como o `fit` espera.
+        with_company = [r for r in carteira if r.get("companies")]
+        universe = [r["companies"] for r in with_company]
         client_companies = [
-            by_id[r["company_id"]] for r in clients if r["company_id"] in by_id
+            r["companies"] for r in with_company if r["status"] == "cliente"
         ]
-        lead_companies = [
-            by_id[r["company_id"]] for r in leads if r["company_id"] in by_id
-        ]
+        lead_companies = [r["companies"] for r in with_company if r["status"] == "lead"]
 
         def compute():
             model = fit(client_companies, universe)
@@ -286,7 +305,7 @@ class PriorityService:
                 for i, ((company, scoring), nota) in enumerate(ranked)
             ]
 
-        # CPU puro sobre até dezenas de milhares de linhas: fora do laço de
+        # CPU puro sobre a carteira inteira: fora do laço de
         # eventos, senão a API inteira trava durante o recálculo.
         model, rows = await asyncio.to_thread(compute)
         return rows, model.to_json()
@@ -335,7 +354,7 @@ def _describe(reason) -> str:
     return (
         f"{reason.label}: {reason.value} "
         f"({reason.share_clients:.0%} dos seus clientes, "
-        f"{reason.share_base:.0%} da base)"
+        f"{reason.share_base:.0%} da sua carteira)"
     )
 
 

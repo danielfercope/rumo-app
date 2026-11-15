@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/services/api_client.dart';
 import '../../auth/providers/profile_provider.dart';
+import '../../carteira/providers/carteira_provider.dart';
 import '../models/group_member_model.dart';
 import '../services/group_service.dart';
 
@@ -29,7 +30,9 @@ final pendingCrmSetupGroupIdProvider = StateProvider<String?>((ref) => null);
 /// Grupo ativo, com fallback pro primeiro grupo da lista quando nenhum foi
 /// escolhido explicitamente (ou o escolhido não existe mais na lista).
 final activeGroupProvider = Provider<MyGroup?>((ref) {
-  final groups = ref.watch(myGroupsProvider).value ?? [];
+  // valueOrNull: falha ao carregar a lista = sem organização ativa, em vez de
+  // propagar o erro pra todo provider/tela que lê a organização.
+  final groups = ref.watch(myGroupsProvider).valueOrNull ?? [];
   if (groups.isEmpty) return null;
   final activeId = ref.watch(activeGroupIdProvider);
   return groups.firstWhere(
@@ -40,6 +43,27 @@ final activeGroupProvider = Provider<MyGroup?>((ref) {
 
 final isActiveGroupAdminProvider = Provider<bool>((ref) {
   return ref.watch(activeGroupProvider)?.isAdmin ?? false;
+});
+
+/// A organização ativa conectou um CRM? Não existe conta nem base global: sem
+/// CRM a organização não usa o sistema (só Organização e Perfil), e o servidor
+/// recusa busca, cadastro e detalhes (019_organizacao_exige_crm.sql).
+final activeGroupHasCrmProvider = Provider<AsyncValue<bool>>((ref) {
+  final active = ref.watch(activeGroupProvider);
+  if (active == null) return const AsyncData(false);
+  return ref
+      .watch(crmConnectionProvider(active.group.id))
+      .whenData((connection) => connection != null);
+});
+
+/// Pode cadastrar empresa na organização ativa? Mesma regra da RPC
+/// `register_company`: organização com CRM, e admin dela OU perfil com
+/// `canAddCompany` (departamento/nível de acesso).
+final canRegisterCompanyProvider = Provider<bool>((ref) {
+  if (ref.watch(activeGroupProvider) == null) return false;
+  if (ref.watch(activeGroupHasCrmProvider).valueOrNull != true) return false;
+  if (ref.watch(isActiveGroupAdminProvider)) return true;
+  return ref.watch(profileProvider).valueOrNull?.canAddCompany ?? false;
 });
 
 /// Gate de rastreamento consumido por radar_page.dart — substitui o antigo

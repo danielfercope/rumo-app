@@ -12,6 +12,7 @@ import 'package:rumo_app/features/groups/models/group_model.dart';
 import 'package:rumo_app/features/groups/presentation/group_management_view.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/groups/services/group_service.dart';
+import '../../helpers/active_group.dart';
 
 class MockGroupService extends Mock implements GroupService {}
 
@@ -62,6 +63,7 @@ void main() {
       overrides: [
         groupServiceProvider.overrideWithValue(service),
         carteiraServiceProvider.overrideWithValue(carteira),
+        crmConnectedOverride(),
         myGroupsProvider.overrideWith((ref) async {
           groupsFetched++;
           return list;
@@ -314,6 +316,77 @@ void main() {
 
       expect(find.text('x@x.com'), findsWidgets);
       expect(find.text('?'), findsWidgets); // inicial do avatar sem nome
+    });
+  });
+
+  group('outras organizações (quem já tem uma)', () {
+    ProviderContainer containerOf(WidgetTester tester) =>
+        ProviderScope.containerOf(
+            tester.element(find.byType(GroupManagementView)));
+
+    Future<void> abrir(WidgetTester tester, String key) async {
+      await tester.scrollUntilVisible(find.byKey(ValueKey(key)), 300,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('membro comum também entra noutra com código e ela vira a ativa',
+        (tester) async {
+      when(() => service.joinByHash('abc123'))
+          .thenAnswer((_) async => makeGroup('g2', 'Outra'));
+      await pump(tester, groups: [mine(makeGroup('g1', 'Agro Sul'), 'member')]);
+      final before = groupsFetched;
+
+      await abrir(tester, 'entrar-outra-organizacao');
+      await tester.enterText(
+          find.byKey(const ValueKey('texto-dialogo')), '  abc123 ');
+      await tester.tap(find.text('Entrar'));
+      await tester.pumpAndSettle();
+
+      verify(() => service.joinByHash('abc123')).called(1);
+      expect(containerOf(tester).read(activeGroupIdProvider), 'g2');
+      expect(groupsFetched, greaterThan(before));
+    });
+
+    testWidgets('código inválido mostra o erro e não troca a ativa',
+        (tester) async {
+      when(() => service.joinByHash(any())).thenThrow('Código inválido');
+      await pump(tester);
+
+      await abrir(tester, 'entrar-outra-organizacao');
+      await tester.enterText(find.byKey(const ValueKey('texto-dialogo')), 'x');
+      await tester.tap(find.text('Entrar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Código inválido'), findsOneWidget);
+      expect(containerOf(tester).read(activeGroupIdProvider), isNull);
+    });
+
+    testWidgets('cancelar não chama o servidor', (tester) async {
+      await pump(tester);
+      await abrir(tester, 'entrar-outra-organizacao');
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      verifyNever(() => service.joinByHash(any()));
+    });
+
+    testWidgets('criar outra: vira a ativa e pede a conexão do CRM',
+        (tester) async {
+      when(() => service.createGroup('Nova Org'))
+          .thenAnswer((_) async => makeGroup('g9', 'Nova Org'));
+      await pump(tester);
+
+      await abrir(tester, 'criar-outra-organizacao');
+      await tester.enterText(
+          find.byKey(const ValueKey('texto-dialogo')), 'Nova Org');
+      await tester.tap(find.text('Criar'));
+      await tester.pumpAndSettle();
+
+      final c = containerOf(tester);
+      expect(c.read(activeGroupIdProvider), 'g9');
+      expect(c.read(pendingCrmSetupGroupIdProvider), 'g9');
     });
   });
 }

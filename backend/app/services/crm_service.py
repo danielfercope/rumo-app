@@ -1,10 +1,15 @@
 import time
 from datetime import datetime, timezone
+from typing import Awaitable, Callable
 
 import httpx
 
 from ..config import settings
-from ..errors import CrmCompanyNotFoundError, UpstreamIntegrationError
+from ..errors import (
+    CrmCompanyNotFoundError,
+    CrmPermissionError,
+    UpstreamIntegrationError,
+)
 from ..schemas import CrmRequest
 
 BASE_URL = "https://api.hubapi.com"
@@ -32,30 +37,50 @@ class CrmService:
     (`settings.crm_cnpj_property_name`) porque ela ainda está sendo
     criada na conta do CRM — não deve ser hardcoded."""
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        *,
+        token: str | None = None,
+        cnpj_property: str | None = None,
+        on_company_missing: "Callable[[CrmService, str], Awaitable[str | None]] | None" = None,
+    ) -> None:
+        """Sem `token`, usa a conta global (`CRM_TOKEN`); com ele, o CRM de uma
+        organização (ver organization_crm.py), com a propriedade de CNPJ do
+        mapeamento dela.
+
+        `on_company_missing(service, cnpj)`: chamado quando uma nota ou contato
+        vai pra uma empresa que não está no CRM (cadastrada no app); devolve o ID
+        dela no CRM depois de criá-la. Sem ele, a escrita falha com 404."""
         self._client = client or httpx.AsyncClient(
             base_url=BASE_URL,
             timeout=10.0,
-            headers={"Authorization": f"Bearer {settings.crm_token}"},
+            headers={"Authorization": f"Bearer {token or settings.crm_token}"},
         )
+        self._cnpj_property = cnpj_property or settings.crm_cnpj_property_name
         self._owner_cache: dict[str, str] = {}
+        self._on_company_missing = on_company_missing
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def handle(self, request: CrmRequest) -> dict:
+    async def handle(self, request: CrmRequest, company_id: str | None = None) -> dict:
+        """`company_id`: a empresa no CRM, quando já se sabe (a sincronização
+        guarda); sem ele, procura pelo CNPJ."""
         handlers = {
             "getNotesWithOwners": self.get_notes_with_owners,
             "getContacts": self.get_contacts,
             "addContact": self.add_contact,
             "addNote": self.add_note,
         }
-        return await handlers[request.action](request)
+        return await handlers[request.action](request, company_id)
 
     # ─── Leitura ────────────────────────────────────────────────────────
 
-    async def get_notes_with_owners(self, request: CrmRequest) -> dict:
-        company_id = await self._find_company_id(request.cnpj)
+    async def get_notes_with_owners(
+        self, request: CrmRequest, company_id: str | None = None
+    ) -> dict:
+        company_id = company_id or await self._find_company_id(request.cnpj)
         if company_id is None:
             return {"notes": []}
 
@@ -88,8 +113,10 @@ class CrmService:
         ]
         return {"notes": notes}
 
-    async def get_contacts(self, request: CrmRequest) -> dict:
-        company_id = await self._find_company_id(request.cnpj)
+    async def get_contacts(
+        self, request: CrmRequest, company_id: str | None = None
+    ) -> dict:
+        company_id = company_id or await self._find_company_id(request.cnpj)
         if company_id is None:
             return {"contacts": []}
 
@@ -122,12 +149,10 @@ class CrmService:
 
     # ─── Escrita ────────────────────────────────────────────────────────
 
-    async def add_contact(self, request: CrmRequest) -> dict:
-        company_id = await self._find_company_id(request.cnpj)
-        if company_id is None:
-            raise CrmCompanyNotFoundError(
-                f"Nenhuma empresa no CRM com CNPJ {request.cnpj}"
-            )
+    async def add_contact(
+        self, request: CrmRequest, company_id: str | None = None
+    ) -> dict:
+        company_id = await self._company_for_write(request.cnpj, company_id)
 
         nome = request.nome or ""
         firstname, _, lastname = nome.partition(" ")
@@ -143,12 +168,10 @@ class CrmService:
         await self._associate_default("contacts", contact["id"], "companies", company_id)
         return {}
 
-    async def add_note(self, request: CrmRequest) -> dict:
-        company_id = await self._find_company_id(request.cnpj)
-        if company_id is None:
-            raise CrmCompanyNotFoundError(
-                f"Nenhuma empresa no CRM com CNPJ {request.cnpj}"
-            )
+    async def add_note(
+        self, request: CrmRequest, company_id: str | None = None
+    ) -> dict:
+        company_id = await self._company_for_write(request.cnpj, company_id)
 
         properties = {
             "hs_note_body": request.noteText,
@@ -157,6 +180,22 @@ class CrmService:
         note = await self._post("/crm/v3/objects/notes", {"properties": properties})
         await self._associate_default("notes", note["id"], "companies", company_id)
         return {}
+
+    async def _company_for_write(self, cnpj: str, company_id: str | None) -> str:
+        company_id = company_id or await self._find_company_id(cnpj)
+        if company_id is None and self._on_company_missing is not None:
+            company_id = await self._on_company_missing(self, cnpj)
+        if company_id is None:
+            raise CrmCompanyNotFoundError(f"Nenhuma empresa no CRM com CNPJ {cnpj}")
+        return company_id
+
+    async def create_company(self, properties: dict) -> str:
+        """Cria a empresa no CRM e devolve o ID dela."""
+        company = await self._post(
+            "/crm/v3/objects/companies",
+            {"properties": {k: v for k, v in properties.items() if v}},
+        )
+        return company["id"]
 
     # ─── Sincronização (ver crm_sync_service.py) ────────────────────────
 
@@ -229,7 +268,7 @@ class CrmService:
                 {
                     "filters": [
                         {
-                            "propertyName": settings.crm_cnpj_property_name,
+                            "propertyName": self._cnpj_property,
                             "operator": "EQ",
                             "value": cnpj,
                         }
@@ -278,6 +317,11 @@ class CrmService:
                 f"Falha de rede ao chamar o CRM ({method} {path}): {exc}"
             ) from exc
 
+        if response.status_code in (401, 403):
+            raise CrmPermissionError(
+                "O CRM recusou o acesso: o token desta organização foi revogado "
+                "ou não tem permissão para empresas, notas e contatos."
+            )
         if response.status_code >= 400:
             raise UpstreamIntegrationError(
                 f"CRM respondeu {response.status_code} em {method} {path}: {response.text}"

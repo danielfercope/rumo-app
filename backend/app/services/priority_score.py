@@ -2,15 +2,20 @@
 de uma organização é cada empresa candidata.
 
 Não usa aprendizado de máquina de propósito. É um "lookalike" por razão de
-chances (naive Bayes com a priori na base): pra cada característica da empresa
-(segmento, CNAE, porte, UF...), compara a frequência do valor entre os
-CLIENTES da organização com a frequência na base inteira de empresas. Valor
-mais comum entre clientes do que na base empurra o score pra cima; menos
-comum, pra baixo. Cada parcela é guardada, então toda nota vem com os motivos.
+chances (naive Bayes com a priori na carteira): pra cada característica da
+empresa (segmento, CNAE, porte, UF...), compara a frequência do valor entre os
+CLIENTES da organização com a frequência na CARTEIRA INTEIRA da organização
+(clientes, leads e perdidos). Valor mais comum entre clientes do que na
+carteira empurra o score pra cima; menos comum, pra baixo. Cada parcela é
+guardada, então toda nota vem com os motivos.
+
+Isolamento: o universo (`universe`) é sempre a carteira de UMA organização —
+nunca o catálogo global `companies`, que tem empresas de outras organizações.
+Quem chama (PriorityService) é responsável por montar o universo assim.
 
 Aprendizado de positivo-não-rotulado: só se conhecem os clientes; o resto
-(leads, perdidos, empresas nunca contatadas) é "não rotulado", não "negativo".
-Por isso a base de comparação é o universo inteiro, e não os não-clientes.
+(leads, perdidos) é "não rotulado", não "negativo". Por isso a comparação é
+com a carteira inteira, e não só com os não-clientes.
 
 Funções puras sobre dicts — sem banco nem rede — pra serem fáceis de testar e
 de avaliar offline (`evaluate`). Este baseline é o piso que um modelo mais
@@ -29,8 +34,8 @@ from datetime import date
 MIN_CLIENTS = 10
 
 # Força do "a priori": equivale a N clientes fictícios que se distribuem como a
-# base inteira. Com poucos clientes reais num valor, a frequência dele entre
-# os clientes é puxada pra frequência da base (razão ~1, sem sinal); quanto
+# carteira inteira. Com poucos clientes reais num valor, a frequência dele entre
+# os clientes é puxada pra frequência da carteira (razão ~1, sem sinal); quanto
 # mais clientes reais, mais o dado pesa. Evita que 1 cliente num CNAE raro
 # valha mais que 20 num CNAE comum.
 DEFAULT_ALPHA = 5.0
@@ -136,7 +141,7 @@ class Reason:
     value: str
     contribution: float  # > 0 empurra pra cima, < 0 pra baixo
     share_clients: float  # % dos clientes com esse valor
-    share_base: float  # % da base com esse valor
+    share_base: float  # % da carteira da organização com esse valor
 
 
 @dataclass(frozen=True)
@@ -163,7 +168,9 @@ class _Table:
         return len(set(self.clients) | set(self.base)) + 1
 
 
-MODEL_VERSION = 1
+# 2: a "base" passou a ser só a carteira da organização (a 1 usava o catálogo
+# global). Modelo gravado com outra versão é descartado e recalculado.
+MODEL_VERSION = 2
 
 
 @dataclass
@@ -255,8 +262,9 @@ def fit(
     features: Sequence[Feature] = DEFAULT_FEATURES,
     alpha: float = DEFAULT_ALPHA,
 ) -> PriorityModel:
-    """Aprende o perfil dos clientes. `universe` é a base inteira (clientes
-    incluídos) contra a qual o perfil é comparado."""
+    """Aprende o perfil dos clientes. `universe` é a carteira inteira da
+    organização (clientes incluídos) contra a qual o perfil é comparado —
+    nunca empresas de outras organizações."""
     tables: dict[str, _Table] = {}
     for feature in features:
         table = _Table()

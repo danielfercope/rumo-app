@@ -12,6 +12,7 @@ from .errors import (
     ConnectionNotFoundError,
     CrmCompanyNotFoundError,
     CrmNotAvailableError,
+    CrmPermissionError,
     InvalidCrmTokenError,
     InvalidMappingError,
     NotGroupAdminError,
@@ -37,6 +38,7 @@ from .services.carteira_sync_service import CarteiraSyncService
 from .services.crm_service import CrmService
 from .services.crm_sync_service import CrmSyncService
 from .services.geocoding_service import GeocodingService
+from .services.organization_crm import OrganizationCrm
 from .services.enrichment.service import FONTES as ENRICHMENT_SOURCES
 from .services.enrichment.service import EnrichmentService
 from .services.postgrest_client import PostgrestClient
@@ -87,6 +89,17 @@ def _build_carteira_services() -> tuple[CarteiraSyncService, CarteiraConnectionS
 _carteira = _build_carteira_services()
 carteira_sync_service = _carteira[0] if _carteira else None
 carteira_connection_service = _carteira[1] if _carteira else None
+
+
+def _build_organization_crm() -> OrganizationCrm:
+    try:
+        cipher: TokenCipher | None = TokenCipher()
+    except TokenCipherError:
+        cipher = None
+    return OrganizationCrm(postgrest_client, cipher)
+
+
+organization_crm = _build_organization_crm()
 
 
 @asynccontextmanager
@@ -184,17 +197,20 @@ async def company_lookup(
 @app.post("/crm")
 async def crm(payload: CrmRequest, uid: str = Depends(current_uid)) -> dict:
     try:
-        # 1) membro da organização; 2) o CNPJ está na carteira DELA; 3) a conta
-        # global de CRM só atende a organização dona dela.
+        # 1) membro da organização; 2) o CNPJ está na carteira DELA; 3) o CRM
+        # é o que a organização conectou (ou a conta global, só pra dona dela).
         await access_service.require_member(uid, payload.group_id)
+        await access_service.require_crm(payload.group_id)
         await access_service.require_cnpj_in_portfolio(payload.group_id, payload.cnpj)
-        if not settings.crm_legacy_group_id or payload.group_id != settings.crm_legacy_group_id:
-            raise CrmNotAvailableError(
-                "Notas e contatos do CRM ainda não estão disponíveis para esta organização."
-            )
-        return await crm_service.handle(payload)
-    except (NotGroupMemberError, CrmNotAvailableError) as exc:
+        async with organization_crm.open(payload.group_id, payload.cnpj) as (
+            service,
+            company_id,
+        ):
+            return await service.handle(payload, company_id=company_id)
+    except (NotGroupMemberError, CrmNotAvailableError, CrmPermissionError) as exc:
         raise HTTPException(403, str(exc)) from exc
+    except TokenCipherError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except (CompanyNotInPortfolioError, CrmCompanyNotFoundError) as exc:
         raise HTTPException(404, str(exc)) from exc
     except UpstreamIntegrationError as exc:
@@ -212,7 +228,7 @@ async def enriquecimento(
         raise HTTPException(404, f"Fonte desconhecida: {fonte}")
     try:
         return await enrichment_service.get(uid, group_id, cnpj, fonte)
-    except NotGroupMemberError as exc:
+    except (NotGroupMemberError, CrmNotAvailableError) as exc:
         raise HTTPException(403, str(exc)) from exc
     except CompanyNotInPortfolioError as exc:
         raise HTTPException(404, str(exc)) from exc

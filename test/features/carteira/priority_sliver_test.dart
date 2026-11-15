@@ -191,7 +191,7 @@ void main() {
             companyId: 'c1',
             nome: 'Farmácia Alfa',
             nota: 80,
-            motivos: ['Segmento: farmácia (90% dos seus clientes, 8% da base)'],
+            motivos: ['Segmento: farmácia (90% dos seus clientes, 8% da sua carteira)'],
           ),
         ],
       ),

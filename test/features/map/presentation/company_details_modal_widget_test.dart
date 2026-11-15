@@ -183,10 +183,17 @@ void main() {
     expect(find.text('Copiado'), findsNothing);
   });
 
-  testWidgets('tocar em um campo copia o valor e o diálogo pode ser fechado',
-      (tester) async {
+  testWidgets('tocar no telefone liga', (tester) async {
     await pumpModal(tester, buildCompany());
     await tester.tap(find.text('47999999999'));
+    await tester.pumpAndSettle();
+    expect(launcher.launched.single, 'tel:47999999999');
+  });
+
+  testWidgets('segurar um campo copia o valor e o diálogo pode ser fechado',
+      (tester) async {
+    await pumpModal(tester, buildCompany());
+    await tester.longPress(find.text('47999999999'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.text('Copiado'), findsOneWidget);
     await tester.tap(find.text('OK'));
