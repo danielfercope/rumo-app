@@ -15,7 +15,9 @@ import httpx
 from .base import SourceNotFound, SourceUnavailable, get_json, post_json
 
 COMEX_URL = "https://api-comexstat.mdic.gov.br/cities?language=pt"
-IBGE_URL = "https://servicodados.ibge.gov.br/api/v3/agregados"
+# API SIDRA do IBGE. A servicodados.ibge.gov.br (mesmas tabelas) recusa conexões
+# de fora do Brasil, e o servidor de produção fica nos EUA: lá ela nunca respondia.
+SIDRA_URL = "https://apisidra.ibge.gov.br/values"
 TOP = 5
 
 
@@ -99,12 +101,14 @@ def _flow(produtos: list[dict], paises: list[dict]) -> dict:
 
 POPULACAO = (6579, 9324)  # Estimativas de população: população residente
 PIB = (5938, 37)  # PIB dos municípios: PIB a preços correntes (mil R$)
+_ULTIMOS_10 = "last 10"
+_ULTIMO = "last"
 
 
 async def municipio(client: httpx.AsyncClient, ibge: int) -> dict:
     names: list[str] = []
     pop, pib = await asyncio.gather(
-        _serie(client, *POPULACAO, ibge, period="-10", names=names),
+        _serie(client, *POPULACAO, ibge, period=_ULTIMOS_10, names=names),
         _serie(client, *PIB, ibge, names=names),
     )
     if not pop and not pib:
@@ -134,26 +138,25 @@ async def _serie(
     agregado: int,
     variavel: int,
     ibge: int,
-    period: str = "-1",
+    period: str = _ULTIMO,
     names: list[str] | None = None,
 ) -> dict[str, float]:
+    """{ano: valor} de uma variável da tabela SIDRA pro município. A resposta é
+    uma lista em que a 1ª linha é o cabeçalho; V = valor, D3C = ano,
+    D1N = nome oficial ("Jaraguá do Sul (SC)")."""
     data = await get_json(
         client,
-        f"{IBGE_URL}/{agregado}/periodos/{period}/variaveis/{variavel}",
-        params={"localidades": f"N6[{int(ibge)}]"},
+        f"{SIDRA_URL}/t/{agregado}/n6/{int(ibge)}/v/{variavel}/p/{period}",
     )
     out: dict[str, float] = {}
-    for var in data or []:
-        for res in var.get("resultados") or []:
-            for serie in res.get("series") or []:
-                nome = (serie.get("localidade") or {}).get("nome")
-                if names is not None and nome and nome not in names:
-                    names.append(nome)
-                for year, value in (serie.get("serie") or {}).items():
-                    try:
-                        out[year] = float(value)
-                    except (TypeError, ValueError):
-                        continue  # "..." = dado não disponível
+    for row in (data or [])[1:]:
+        nome = row.get("D1N")
+        if names is not None and nome and nome not in names:
+            names.append(nome)
+        try:
+            out[str(row["D3C"])] = float(row["V"])
+        except (KeyError, TypeError, ValueError):
+            continue  # "..." / "-" = dado não disponível
     return out
 
 
