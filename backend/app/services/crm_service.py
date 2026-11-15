@@ -11,6 +11,7 @@ from ..errors import (
     UpstreamIntegrationError,
 )
 from ..schemas import CrmRequest
+from .hubspot_http import HubSpotHttp
 
 BASE_URL = "https://api.hubapi.com"
 
@@ -60,6 +61,7 @@ class CrmService:
         self._cnpj_property = cnpj_property or settings.crm_cnpj_property_name
         self._owner_cache: dict[str, str] = {}
         self._on_company_missing = on_company_missing
+        self._http = HubSpotHttp(self._client)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -311,7 +313,7 @@ class CrmService:
 
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         try:
-            response = await self._client.request(method, path, **kwargs)
+            response = await self._http.send(method, path, **kwargs)
         except httpx.RequestError as exc:
             raise UpstreamIntegrationError(
                 f"Falha de rede ao chamar o CRM ({method} {path}): {exc}"
