@@ -83,30 +83,35 @@ enum _Tab {
   final IconData icon;
 }
 
-List<_Tab> _tabsFor({required bool hasOrganization}) =>
-    hasOrganization ? _Tab.values : const [_Tab.organizacao, _Tab.perfil];
+List<_Tab> _tabsFor({required bool canUseApp}) =>
+    canUseApp ? _Tab.values : const [_Tab.organizacao, _Tab.perfil];
 
-/// Rótulos das abas pra quem tem (ou não) organização.
+/// Rótulos das abas pra quem pode (ou não) usar o app.
 @visibleForTesting
-List<String> mainTabLabels({required bool hasOrganization}) =>
-    [for (final t in _tabsFor(hasOrganization: hasOrganization)) t.label];
+List<String> mainTabLabels({required bool canUseApp}) =>
+    [for (final t in _tabsFor(canUseApp: canUseApp)) t.label];
 
 /// Abas do app. Radar e Leads (a carteira de clientes) só existem pra quem
-/// pertence a uma organização; sem ela o usuário só tem Perfil e Organização
-/// (onde cria uma ou entra com um código de convite).
+/// está numa organização com CRM conectado — não há conta nem base global.
+/// Sem isso o usuário só tem Perfil e Organização (onde cria uma, entra com um
+/// código de convite ou, sendo admin, conecta o CRM).
 class MainNavigation extends ConsumerWidget {
   const MainNavigation({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hasOrganization =
-        (ref.watch(myGroupsProvider).valueOrNull ?? const []).isNotEmpty;
-    final tabs =
-        hasOrganization ? _Tab.values : const [_Tab.organizacao, _Tab.perfil];
+    final hasCrm = ref.watch(activeGroupHasCrmProvider);
+    if (hasCrm.isLoading && !hasCrm.hasValue) {
+      return const CupertinoPageScaffold(
+        child: Center(child: CupertinoActivityIndicator()),
+      );
+    }
+    final canUseApp = hasCrm.valueOrNull ?? false;
+    final tabs = _tabsFor(canUseApp: canUseApp);
 
     return CupertinoTabScaffold(
       // trocar o conjunto de abas recria o scaffold (o índice não vale mais)
-      key: ValueKey(hasOrganization),
+      key: ValueKey(canUseApp),
       tabBar: CupertinoTabBar(
         onTap: (index) {
           ref.read(analyticsProvider).logScreenView(

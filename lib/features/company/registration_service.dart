@@ -8,18 +8,7 @@ import 'package:http/http.dart' as http;
 class RegistrationService {
   final ApiClient _apiClient;
 
-  /// Organização que pode enviar cadastros ao webhook de CRM (ver
-  /// [AppConfig.webhookCrmGroupId]); injetável pra teste.
-  final String webhookGroupId;
-
-  /// URL do webhook de CRM ([AppConfig.urlWebhookCrm]); injetável pra teste.
-  final String webhookUrl;
-
-  RegistrationService(
-    this._apiClient, {
-    this.webhookGroupId = AppConfig.webhookCrmGroupId,
-    this.webhookUrl = AppConfig.urlWebhookCrm,
-  });
+  RegistrationService(this._apiClient);
 
   /// O CNPJ já está na carteira da organização? Olha só a carteira dela: não dá
   /// pra descobrir se a empresa existe em outra organização.
@@ -30,12 +19,6 @@ class RegistrationService {
     );
     return result == true;
   }
-
-  /// O webhook de CRM só recebe cadastros da organização configurada.
-  bool webhookEnabledFor(String? groupId) =>
-      webhookUrl.isNotEmpty &&
-      webhookGroupId.isNotEmpty &&
-      groupId == webhookGroupId;
 
   // Consulta de dados cadastrais por CNPJ — hoje via BrasilAPI
   // (backend/app/services/company_lookup_service.py), que devolve o mesmo
@@ -151,86 +134,6 @@ class RegistrationService {
       return '${d.substring(0, 4)}-${d.substring(4, 6)}-${d.substring(6, 8)}';
     } catch (_) {
       return null;
-    }
-  }
-
-  Future<bool> sendToWebhook(
-    Map<String, dynamic> dadosApi,
-    Map<String, dynamic> dadosForm,
-    String userEmail,
-    String userName,
-  ) async {
-    final payload = {
-      'assignments': [
-        {'name': 'Primeiro nome', 'value': dadosForm['primeiro_nome']},
-        {'name': 'Sobrenome', 'value': dadosForm['sobrenome']},
-        {'name': 'Nome completo', 'value': dadosForm['nome_completo']},
-        {'name': 'Nome do sócio', 'value': dadosForm['nome_socio']},
-        {'name': 'Email', 'value': dadosForm['email_contato']},
-        {
-          'name': 'Nome da empresa',
-          'value': dadosApi['fantasia'] ?? dadosApi['razao']
-        },
-        {'name': 'Razão Social', 'value': dadosApi['razao']},
-        {'name': 'CNPJ', 'value': dadosApi['cnpj']},
-        {
-          'name': 'Número de telefone do sócio',
-          'value': dadosForm['telefone_socio']
-        },
-        {
-          'name': 'Novo lead ou cliente da base?',
-          'value': dadosForm['tipo_lead']
-        },
-        {
-          'name': 'Nome de quem está indicando o lead/cliente',
-          'value': userName
-        },
-        {
-          'name': 'E-mail de quem está indicando o lead/cliente',
-          'value': userEmail
-        },
-        {
-          'name': 'Análises a serem feitas',
-          'value': dadosForm['analises_a_serem_feitas']
-        },
-        {
-          'name': 'Endereço',
-          'value':
-              '${dadosApi['log_tipo'] ?? ''} ${dadosApi['log_nome'] ?? ''}, ${dadosApi['log_num'] ?? ''}'
-        },
-        {'name': 'Bairro', 'value': dadosApi['log_bairro']},
-        {'name': 'Cidade', 'value': dadosApi['log_municipio']},
-        {'name': 'Estado/Região', 'value': dadosApi['log_uf']},
-        {'name': 'CEP', 'value': dadosApi['log_cep']},
-        {
-          'name': 'Qual é o valor da dívida?',
-          'value': dadosForm['valor_divida']
-        },
-        {'name': 'Possuí débitos?', 'value': dadosForm['possui_debitos']},
-        {'name': 'Data de validade e-CAC', 'value': dadosForm['validade_ecac']},
-        {'name': 'setor da empresa', 'value': dadosForm['setor_empresa']},
-        {
-          'name': 'Para quem a procuração eletrônica está habilitada?',
-          'value': dadosForm['para_quem_procuracao_habilitada']
-        },
-        {'name': 'Departamentos', 'value': dadosForm['departamentos']},
-        {'name': 'Regime tributário', 'value': dadosForm['regime_tributario']},
-        {'name': 'Prioridade', 'value': dadosForm['prioridade']},
-        {'name': 'RUMO', 'value': true},
-      ],
-    };
-
-    try {
-      final response = await http
-          .post(
-            Uri.parse(webhookUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode(payload),
-          )
-          .timeout(const Duration(seconds: 15));
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (_) {
-      return false;
     }
   }
 }

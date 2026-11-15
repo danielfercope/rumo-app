@@ -6,7 +6,7 @@ import respx
 from fastapi.testclient import TestClient
 
 from app import main
-from app.errors import CompanyNotInPortfolioError, NotGroupMemberError
+from app.errors import CompanyNotInPortfolioError, CrmNotAvailableError, NotGroupMemberError
 from app.internal_token import mint_internal_token
 from app.services.enrichment import compras, google_places, receita, regional
 from app.services.enrichment.base import SourceNotFound, SourceUnavailable
@@ -355,11 +355,17 @@ class FakeDb:
 class FakeAccess:
     def __init__(self):
         self.member, self.in_portfolio, self.calls = True, True, []
+        self.crm = True
 
     async def require_member(self, uid, group_id):
         self.calls.append(("member", uid, group_id))
         if not self.member:
             raise NotGroupMemberError("fora")
+
+    async def require_crm(self, group_id):
+        self.calls.append(("crm", group_id))
+        if not self.crm:
+            raise CrmNotAvailableError("sem CRM")
 
     async def require_cnpj_in_portfolio(self, group_id, cnpj):
         self.calls.append(("portfolio", group_id, cnpj))
@@ -389,6 +395,9 @@ async def test_servico_confere_acesso_antes_de_qualquer_chamada(env):
         await svc.get("u1", "g1", "07.175.725/0001-60", "receita")
     access.member, access.in_portfolio = False, True
     with pytest.raises(NotGroupMemberError):
+        await svc.get("u1", "g1", CNPJ, "receita")
+    access.member, access.crm = True, False  # organização sem CRM conectado
+    with pytest.raises(CrmNotAvailableError):
         await svc.get("u1", "g1", CNPJ, "receita")
     assert route.call_count == 0
     with pytest.raises(ValueError):

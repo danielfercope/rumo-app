@@ -51,6 +51,12 @@ class UpstreamIntegrationError(Exception):
     """Falha de rede ou de resposta ao chamar uma integração externa."""
 
 
+class CrmPermissionError(UpstreamIntegrationError):
+    """O CRM recusou o token (401/403): revogado ou sem os escopos de notas e
+    contatos. Subclasse de UpstreamIntegrationError, então quem já tolera falha
+    do CRM (ex.: nome do dono da nota) continua tolerando."""
+
+
 class GeocodingNotFoundError(Exception):
     """O provedor de geocodificação não achou coordenadas pro endereço."""
 
@@ -61,5 +67,5 @@ class CompanyNotInPortfolioError(Exception):
 
 
 class CrmNotAvailableError(Exception):
-    """As notas e contatos do CRM usam a conta global do RUMO, que só atende a
-    organização dona dela (CRM_LEGACY_GROUP_ID). As demais ainda não têm esse recurso."""
+    """A organização não conectou um CRM (não existe conta global): sem ele
+    não há busca, cadastro, detalhes, notas nem contatos."""

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Isolamento entre organizacoes em producao (db/schema/015_isolamento_organizacao.sql).
 #
-#   isolate_organizations.sh migrate        leva a EC2 pra BRANCH (padrao main) e aplica a 015
+#   isolate_organizations.sh migrate        leva a EC2 pra BRANCH (padrao main) e aplica a 015 e a 019
+#                                           (019: organizacao sem CRM conectado nao busca nem cadastra)
 #   isolate_organizations.sh create-org <nome> <email-do-admin>
 #                                           cria a organizacao dona da base atual (ex.: Rumo) e entrega
 #                                           a um administrador que ja entrou no app uma vez. Idempotente
@@ -9,10 +10,9 @@
 #   isolate_organizations.sh legacy <uuid>  associa a base SEM DONO (importada pelo sync antigo ou
 #                                           cadastrada antes das organizacoes) a organizacao <uuid>.
 #                                           Com COUNT_ONLY=1 so CONTA (le o banco, nao altera nada).
-#   isolate_organizations.sh config <uuid>  grava CRM_LEGACY_GROUP_ID=<uuid> (a organizacao dona do
-#                                           CRM global, unica que usa notas/contatos no detalhe da
-#                                           empresa) e desliga o sync antigo de conta unica
-#                                           (CRM_SYNC_ENABLED=false); reinicia o backend
+#   isolate_organizations.sh config         desliga o sync antigo de conta unica
+#                                           (CRM_SYNC_ENABLED=false); reinicia o backend. Nao ha
+#                                           conta global: cada organizacao usa o CRM que conectou
 #   isolate_organizations.sh verify         prova, SO LEITURA, que um usuario sem organizacao nao
 #                                           ve nenhuma empresa nem consegue buscar
 #
@@ -21,11 +21,11 @@
 #   2. isolate_organizations.sh migrate
 #   2b. isolate_organizations.sh create-org Rumo <email-do-admin>     (anote o UUID impresso)
 #   3. isolate_organizations.sh legacy <uuid>   (antes: COUNT_ONLY=1 pra ver quantas empresas)
-#   4. isolate_organizations.sh config <uuid>
+#   4. isolate_organizations.sh config
+#   4b. um admin da organizacao <uuid> conecta o CRM dela (aba Organizacao): sem isso ela nao usa
+#       o sistema (019_organizacao_exige_crm.sql)
 #   5. isolate_organizations.sh verify
-#   6. make deploy-web / deploy-apk         (o build precisa de WEBHOOK_CRM_GROUP_ID no .env se a
-#                                            organizacao <uuid> deve continuar enviando cadastros
-#                                            ao webhook de CRM; sem isso o webhook fica desligado)
+#   6. make deploy-web / deploy-apk
 #
 # Sem passo 3, as empresas atuais ficam INVISIVEIS pra todos (nada e apagado: basta rodar o `legacy`).
 #
@@ -96,13 +96,14 @@ case "$step" in
       "set -e" \
       "cd /opt/rumo-app" \
       "git fetch --depth 1 origin $branch && git checkout -B $branch FETCH_HEAD" \
-      "test -f db/schema/015_isolamento_organizacao.sql || { echo 'ERRO: 015 nao existe em $branch'; exit 1; }" \
+      "test -f db/schema/015_isolamento_organizacao.sql && test -f db/schema/019_organizacao_exige_crm.sql || { echo 'ERRO: 015/019 nao existem em $branch'; exit 1; }" \
       "[ \"\$($psql -tAc \"select count(*) from pg_tables where schemaname='public' and tablename in ('carteira_empresas','groups','group_members')\")\" = 3 ] || { echo 'ERRO: faltam carteira_empresas/groups/group_members (migracoes 007-014). Abortado, nada aplicado.'; exit 1; }" \
       "$psql -v ON_ERROR_STOP=1 < db/schema/015_isolamento_organizacao.sql" \
+      "$psql -v ON_ERROR_STOP=1 < db/schema/019_organizacao_exige_crm.sql" \
       "echo '--- verificacao (policies de companies):'" \
       "$psql -tAc \"select string_agg(policyname || ' [' || cmd || ']', ', ' order by policyname) from pg_policies where schemaname='public' and tablename='companies' and 'web_user' = any(roles)\"" \
-      "$psql -tAc \"select 'funcoes=' || count(*) || '/3' from pg_proc where pronamespace='public'::regnamespace and proname in ('company_in_my_orgs','register_company','portfolio_has_cnpj')\""
-    echo "Esperado: so 'companies_select_org [SELECT]' e funcoes=3/3."
+      "$psql -tAc \"select 'funcoes=' || count(*) || '/4' from pg_proc where pronamespace='public'::regnamespace and proname in ('company_in_my_orgs','register_company','portfolio_has_cnpj','group_has_crm')\""
+    echo "Esperado: so 'companies_select_org [SELECT]' e funcoes=4/4."
     ;;
   create-org)
     org_name="$arg"; admin_email="${3:-}"
@@ -128,10 +129,9 @@ case "$step" in
       "$psql -tAc \"select 'carteira da organizacao agora: ' || count(*) from carteira_empresas where group_id='$arg'\""
     ;;
   config)
-    uuid_ok "$arg" || { echo "uso: $0 config <uuid-da-organizacao-dona-do-crm-global>" >&2; exit 2; }
-    update_secret ". + {CRM_LEGACY_GROUP_ID: \"$arg\", CRM_SYNC_ENABLED: \"false\"}"
+    update_secret ". + {CRM_SYNC_ENABLED: \"false\"} | del(.CRM_LEGACY_GROUP_ID)"
     refresh_env_and_restart_backend
-    echo "CRM_LEGACY_GROUP_ID definido e sync antigo (conta unica) desligado."
+    echo "Sync antigo (conta unica) desligado."
     ;;
   verify)
     # SO LEITURA: simula um usuario SEM organizacao (claim 'sub' inexistente) com o papel que o

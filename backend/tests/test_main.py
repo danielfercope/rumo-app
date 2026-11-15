@@ -23,14 +23,22 @@ def client():
 
 @pytest.fixture
 def acesso_liberado(monkeypatch):
-    """Usuário membro, empresa na carteira e organização dona do CRM global."""
+    """Usuário membro, organização com CRM conectado e empresa na carteira. O
+    CRM da organização é `main.crm_service` (os testes espiam o `handle`)."""
+    from contextlib import asynccontextmanager
+
     async def ok(*args):
         return None
 
+    @asynccontextmanager
+    async def crm_da_organizacao(group_id, cnpj):
+        yield main.crm_service, None
+
     monkeypatch.setattr(main.access_service, "require_any_organization", ok)
     monkeypatch.setattr(main.access_service, "require_member", ok)
+    monkeypatch.setattr(main.access_service, "require_crm", ok)
     monkeypatch.setattr(main.access_service, "require_cnpj_in_portfolio", ok)
-    monkeypatch.setattr(main.settings, "crm_legacy_group_id", "g1")
+    monkeypatch.setattr(main.organization_crm, "open", crm_da_organizacao)
 
 
 @pytest.fixture
@@ -98,7 +106,7 @@ def test_company_lookup(client, auth, acesso_liberado, monkeypatch, error, statu
      (UpstreamIntegrationError("crm fora"), 502)],
 )
 def test_crm(client, auth, acesso_liberado, monkeypatch, error, status):
-    async def fake(payload):
+    async def fake(payload, company_id=None):
         if error:
             raise error
         return {"notes": []}
@@ -151,7 +159,7 @@ CRM_BODY = {"group_id": "g1", "action": "getNotesWithOwners", "cnpj": "123"}
 def _crm_espiao(monkeypatch):
     chamadas = []
 
-    async def handle(payload):
+    async def handle(payload, company_id=None):
         chamadas.append(payload)
         return {"notes": []}
 
@@ -187,17 +195,61 @@ def test_crm_nega_empresa_que_nao_esta_na_carteira(client, auth, acesso_liberado
     assert chamadas == []
 
 
-@pytest.mark.parametrize("dona", ["", "outra-organizacao"])
-def test_crm_so_atende_a_organizacao_dona_do_crm_global(
-    client, auth, acesso_liberado, monkeypatch, dona
+def test_crm_de_organizacao_sem_crm_conectado_responde_403(
+    client, auth, acesso_liberado, monkeypatch
 ):
+    from app.errors import CrmNotAvailableError
+
     chamadas = _crm_espiao(monkeypatch)
-    monkeypatch.setattr(main.settings, "crm_legacy_group_id", dona)
+
+    async def sem_crm(group_id):
+        raise CrmNotAvailableError("Esta organização ainda não conectou um CRM.")
+
+    monkeypatch.setattr(main.access_service, "require_crm", sem_crm)
 
     response = client.post("/crm", json=CRM_BODY, headers=auth)
 
     assert response.status_code == 403
-    assert chamadas == [], "membro de outra organização não lê as notas do CRM do RUMO"
+    assert "não conectou um CRM" in response.json()["detail"]
+    assert chamadas == [], "não existe conta global pra cair"
+
+
+def test_crm_usa_o_crm_conectado_pela_organizacao(client, auth, acesso_liberado, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    vistos = []
+
+    class FakeService:
+        async def handle(self, payload, company_id=None):
+            vistos.append((payload.group_id, company_id))
+            return {"contacts": []}
+
+    @asynccontextmanager
+    async def open_(group_id, cnpj):
+        yield FakeService(), "987"
+
+    monkeypatch.setattr(main.organization_crm, "open", open_)
+
+    response = client.post("/crm", json=CRM_BODY, headers=auth)
+
+    assert response.status_code == 200
+    assert vistos == [("g1", "987")]
+
+
+def test_crm_token_sem_permissao_responde_403_com_a_explicacao(
+    client, auth, acesso_liberado, monkeypatch
+):
+    from app.errors import CrmPermissionError
+
+    async def sem_escopo(payload, company_id=None):
+        raise CrmPermissionError("sem permissão para notas e contatos")
+
+    monkeypatch.setattr(main.crm_service, "handle", sem_escopo)
+
+    response = client.post("/crm", json=CRM_BODY, headers=auth)
+
+    assert response.status_code == 403
+    assert "notas e contatos" in response.json()["detail"]
 
 
 def test_crm_confere_pertinencia_com_o_uid_do_token(client, auth, acesso_liberado, monkeypatch):
@@ -232,7 +284,7 @@ def test_crm_exige_group_id(client, auth):
 def test_endpoints_de_dados_exigem_autenticacao(client, monkeypatch, path, body):
     called = []
 
-    async def fake(payload):
+    async def fake(payload, company_id=None):
         called.append(payload)
         return {}
 

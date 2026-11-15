@@ -179,68 +179,6 @@ void main() {
     });
   });
 
-  group('sendToWebhook', () {
-    const form = {
-      'primeiro_nome': 'Ana',
-      'sobrenome': 'Silva',
-      'tipo_lead': 'Novo lead',
-    };
-
-    test('envia o payload e retorna true em 2xx', () async {
-      late Map<String, dynamic> payload;
-      final client = MockClient((request) async {
-        expect(request.headers['Content-Type'], contains('application/json'));
-        payload = json.decode(request.body) as Map<String, dynamic>;
-        return http.Response('ok', 200);
-      });
-
-      final ok = await http.runWithClient(
-          () => service.sendToWebhook(_dadosApi, form, 'u@x.com', 'Usuária'),
-          () => client);
-
-      expect(ok, isTrue);
-      final assignments = (payload['assignments'] as List).cast<Map>();
-      Object? valueOf(String name) =>
-          assignments.firstWhere((a) => a['name'] == name)['value'];
-      expect(valueOf('Primeiro nome'), 'Ana');
-      expect(valueOf('Nome da empresa'), 'Teste');
-      expect(valueOf('CNPJ'), '12345678000199');
-      expect(
-          valueOf('E-mail de quem está indicando o lead/cliente'), 'u@x.com');
-      expect(valueOf('RUMO'), true);
-    });
-
-    test('usa a razão social quando não há nome fantasia', () async {
-      late Map<String, dynamic> payload;
-      final client = MockClient((request) async {
-        payload = json.decode(request.body) as Map<String, dynamic>;
-        return http.Response('ok', 201);
-      });
-      await http.runWithClient(
-          () => service
-              .sendToWebhook({..._dadosApi, 'fantasia': null}, form, '', ''),
-          () => client);
-      final nome = (payload['assignments'] as List)
-          .cast<Map>()
-          .firstWhere((a) => a['name'] == 'Nome da empresa');
-      expect(nome['value'], 'Empresa Teste LTDA');
-    });
-
-    test('retorna false em resposta não-2xx', () async {
-      final client = MockClient((_) async => http.Response('erro', 500));
-      final ok = await http.runWithClient(
-          () => service.sendToWebhook(_dadosApi, form, '', ''), () => client);
-      expect(ok, isFalse);
-    });
-
-    test('retorna false quando a requisição falha', () async {
-      final client = MockClient((_) async => throw http.ClientException('x'));
-      final ok = await http.runWithClient(
-          () => service.sendToWebhook(_dadosApi, form, '', ''), () => client);
-      expect(ok, isFalse);
-    });
-  });
-
   test('registrationServiceProvider usa o ApiClient do provider', () {
     final container = ProviderContainer(overrides: [
       apiClientProvider.overrideWithValue(api),

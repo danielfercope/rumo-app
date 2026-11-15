@@ -35,7 +35,7 @@ O **Rumo** é uma aplicação (Web, Android e iOS) de inteligência comercial. E
 | **Perfil** (aba 3) | Política de privacidade e logout ("Sair da conta"). |
 | **Equipe** (aba 4) | Grupos (organizações): criar um grupo ou entrar por convite, gerenciar membros e papéis, ligar o rastreamento e abrir o **Mapa da Equipe**. |
 | **Detalhes da empresa** | Dados cadastrais, financeiros e de crédito; **histórico de atividades do CRM** (notas e contatos); adicionar nota e contato direto no HubSpot; **Traçar Rota** até o cliente pelo Google Maps. |
-| **Cadastro de empresa** | Fluxo de 3 passos (CNPJ → dados do sócio → dados complementares). Consulta o CNPJ na BrasilAPI, geocodifica o endereço, grava no banco e envia ao CRM por webhook. Só aparece para quem tem permissão e **só aceita cadastrar se o usuário estiver a até 2 km da empresa**. |
+| **Cadastro de empresa** | Fluxo de 2 passos (CNPJ → responsável: nome, telefone e e-mail). Consulta o CNPJ na BrasilAPI, geocodifica o endereço, grava no banco e leva a empresa e o responsável ao CRM da organização. Só aparece para quem tem permissão e **só aceita cadastrar se o usuário estiver a até 2 km da empresa**. |
 | **Rastreamento** | Quando o grupo do usuário liga o rastreamento, o app grava a posição a cada 5 minutos (posição atual + histórico). Só admins do grupo enxergam a posição dos membros. |
 | **Sincronização com o CRM** | O CRM é a fonte das empresas: a cada 10 minutos o backend traz pro banco as empresas novas do HubSpot, já enriquecidas e geocodificadas. |
 | **Fallback de mapa** | Se o Google Maps não está disponível (sem chave ou chave rejeitada), o mapa troca sozinho para o OpenStreetMap. |
@@ -65,7 +65,6 @@ flowchart LR
     BR[BrasilAPI<br/>dados de CNPJ]
     GEO[Google Geocoding API]
     MAPS[Google Maps / OpenStreetMap]
-    N8N[n8n<br/>webhook de cadastro]
 
     APP -- login --> FB
     APP -- "/ (site) · /download/rumo.apk" --> CADDY
@@ -73,12 +72,11 @@ flowchart LR
     APP -- "/backend/* (auth, CRM, CNPJ)" --> CADDY
     APP -- tiles do mapa --> MAPS
     APP -- geocoding do cadastro --> GEO
-    APP -- webhook de cadastro --> N8N
     CADDY --> PGRST --> DB
     CADDY --> API
     API -- valida idToken --> FB
     API -- "token interno (role crm_sync)" --> PGRST
-    API -- notas, contatos, sync --> HUB
+    API -- "empresas, notas, contatos, sync (token da organização)" --> HUB
     API --> BR
     API --> GEO
 ```
@@ -286,13 +284,12 @@ GPS (geolocator, com fallback)
 
 O mesmo critério existe no banco (`can_add_company()`), que é quem de fato bloqueia a escrita. Usuários com `nivel_acesso = 'guest'` são tratados como convidados.
 
-### Cadastro de empresa (3 passos)
+### Cadastro de empresa (2 passos)
 
 1. **CNPJ:** consulta o backend (`/backend/company-lookup`, que usa a BrasilAPI), geocodifica o endereço e **valida a distância**: bloqueia se o usuário está a mais de 2 km da empresa.
-2. **Sócio:** dados do contato.
-3. **Complementares:** departamentos, setor, regime tributário, prioridade etc. (listas em `constants.dart`).
+2. **Responsável:** nome completo, telefone e e-mail (os três obrigatórios), já preenchidos com o 1º sócio e o contato da Receita.
 
-Ao salvar, o app faz `upsert` em `companies` (`on_conflict=cnpj`) pelo `RegistrationService.saveCompany` e envia o cadastro ao CRM pelo webhook (`URL_WEBHOOK_CRM`, um fluxo n8n).
+Ao salvar, o app cadastra a empresa na carteira da organização (RPC `register_company`) e o responsável vira contato dela no CRM que a organização conectou (`/crm`, que cria a empresa no CRM se ela ainda não estiver lá). Não há webhook nem CRM global: sem CRM conectado, a organização não usa o sistema.
 
 ### Equipe, grupos e rastreamento
 
@@ -544,11 +541,10 @@ Injetado no build por `--dart-define-from-file=.env` e lido por `AppConfig` (`li
 
 | Variável | Uso |
 |---|---|
-| `API_BASE_URL` | URL base do backend (Caddy). Padrão `http://localhost:8080` |
+| `API_BASE_URL` | URL base do backend (Caddy). **Deixe fora do `.env` pra rodar local**: `make run` passa o IP atual da máquina, e sem ela o Web usa `http://<host da página>:8080` (fora do Web, `http://localhost:8080`). Só defina pra apontar pra outro backend |
 | `SERVER_WEB_CLIENT_ID` | OAuth Google (client Web / servidor) |
 | `CLIENT_ID` | OAuth Google (client iOS) |
 | `GOOGLE_API_KEY` | Google Maps + Geocoding. Vazia ⇒ fallback para OSM |
-| `URL_WEBHOOK_CRM` | Webhook chamado após o cadastro de empresa |
 
 ### Chaves nativas e do Web (fora do `.env`, porque o código nativo não lê `--dart-define`)
 
@@ -604,13 +600,17 @@ Crie o `.env` da raiz (veja [Variáveis de ambiente](#variáveis-de-ambiente-e-s
 
 ### 3. Rodar
 
-```bash
-# Web
-flutter run -d chrome --dart-define-from-file=.env
+Da raiz do projeto:
 
-# Android / iOS (dispositivo ou emulador já selecionado; `flutter devices` lista)
-flutter run --dart-define-from-file=.env
+```bash
+make run DEVICE=chrome   # Web
+make run DEVICE=<id>     # Android / iOS (`flutter devices` lista os ids)
+make run                 # o Flutter pergunta o dispositivo
 ```
+
+O `make run` (`infra/scripts/run_app.sh`) abre o Docker se estiver parado, sobe o backend (`make db-up`) e passa `API_BASE_URL` com o **IP atual da máquina** na rede, então funciona em celular físico e emulador mesmo depois de trocar de rede, sem editar nada. Argumentos extras do Flutter vão em `FLUTTER_ARGS="..."`.
+
+Sem o `make`, `flutter run -d chrome --dart-define-from-file=.env` também funciona no Web (o app usa `http://<host da página>:8080`); pra celular, passe `--dart-define=API_BASE_URL=http://<IP da máquina>:8080`.
 
 **Android:** o app pede `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` e `ACCESS_BACKGROUND_LOCATION` em tempo de execução.
 
@@ -762,8 +762,8 @@ Arquivos novos em `db/schema/` **não são aplicados sozinhos** em um banco que 
 
 ```bash
 # App
-flutter run -d chrome --dart-define-from-file=.env     # Web
-flutter run --dart-define-from-file=.env               # Android/iOS
+make run DEVICE=chrome                                 # Web (sobe o backend e acha o IP sozinho)
+make run DEVICE=<id>                                   # Android/iOS
 flutter build web --release --dart-define-from-file=.env
 flutter build apk --release --dart-define-from-file=.env
 flutter analyze && flutter test

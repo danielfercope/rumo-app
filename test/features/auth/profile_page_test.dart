@@ -11,6 +11,7 @@ import 'package:rumo_app/features/auth/providers/profile_provider.dart';
 import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/models/group_model.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
+import '../../helpers/active_group.dart';
 
 class MockAuthController extends Mock implements AuthController {}
 
@@ -62,6 +63,7 @@ void main() {
         userPhotoProvider.overrideWith((ref) async => null),
         profileProvider.overrideWith((ref) =>
             profileFuture != null ? profileFuture() : Future.value(profile())),
+        crmConnectedOverride(),
         myGroupsProvider.overrideWith((ref) => groups != null
             ? groups()
             : Future.value([mine('Agro Sul', 'admin')])),
@@ -101,11 +103,19 @@ void main() {
       (tester) async {
     await pump(tester,
         profileFuture: () async => profile(
-            nivel: 'guest', departamento: 'Vendas', nome: '', email: ''));
+            nivel: 'guest', departamento: 'Vendas', nome: '', email: ''),
+        groups: () async => [mine('Agro Sul', 'member')]);
 
     expect(find.text('Convidado'), findsOneWidget);
     expect(find.text('Sem permissão'), findsOneWidget);
     expect(find.text('Sem nome'), findsOneWidget);
+  });
+
+  testWidgets('admin da organização pode cadastrar mesmo sem o departamento',
+      (tester) async {
+    await pump(tester,
+        profileFuture: () async => profile(departamento: 'Vendas'));
+    expect(find.text('Permitido'), findsOneWidget);
   });
 
   testWidgets('membro (não admin) aparece como Membro', (tester) async {

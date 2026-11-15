@@ -2,9 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../map/providers/location_provider.dart';
-import '../auth/providers/profile_provider.dart';
 import '../groups/providers/group_provider.dart';
-import 'constants.dart';
+import 'crm_service.dart';
 import 'registration_service.dart';
 
 class AddCompanyModal extends ConsumerStatefulWidget {
@@ -28,49 +27,17 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
   // Campos do step 1
   final _cnpjController = TextEditingController();
 
-  // Campos do step 2
-  late TextEditingController _primeiroNomeCtrl;
-  late TextEditingController _nomeCompletoCtrl;
-  late TextEditingController _sobrenomeCtrl;
-  late TextEditingController _emailCtrl;
-  late TextEditingController _telefoneCtrl;
-  late TextEditingController _nomeSocioCtrl;
-  late TextEditingController _nomeProprietarioCtrl;
-
-  String? _procuracao;
-  String? _possuiDebitos;
-  String? _valorDivida;
-  String? _regimeTributario;
-  String? _analises;
-  String? _validadeEcac;
-  String? _setorEmpresaKey; // código HubSpot
-  String? _setorEmpresaLabel; // nome em PT para exibição
-  String? _departamento;
-  String? _tipoLead;
-  String? _prioridadeKey;
-
-  @override
-  void initState() {
-    super.initState();
-    _primeiroNomeCtrl = TextEditingController();
-    _nomeCompletoCtrl = TextEditingController();
-    _sobrenomeCtrl = TextEditingController();
-    _emailCtrl = TextEditingController();
-    _telefoneCtrl = TextEditingController();
-    _nomeSocioCtrl = TextEditingController();
-    _nomeProprietarioCtrl = TextEditingController();
-  }
+  // Campos do step 2: o responsável pela empresa
+  final _nomeCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _telefoneCtrl = TextEditingController();
 
   @override
   void dispose() {
     _cnpjController.dispose();
-    _primeiroNomeCtrl.dispose();
-    _nomeCompletoCtrl.dispose();
-    _sobrenomeCtrl.dispose();
+    _nomeCtrl.dispose();
     _emailCtrl.dispose();
     _telefoneCtrl.dispose();
-    _nomeSocioCtrl.dispose();
-    _nomeProprietarioCtrl.dispose();
     super.dispose();
   }
 
@@ -83,20 +50,14 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
     return null;
   }
 
+  /// Pré-preenche com o 1º sócio e o contato da Receita; o usuário corrige.
   void _populateStep2Fields() {
     final api = _dadosApi!;
-    final socio = _extractFirstSocio(api) ?? '';
-    final partes = socio.split(' ');
-
-    _primeiroNomeCtrl.text = partes.isNotEmpty ? partes.first : '';
-    _nomeCompletoCtrl.text = socio;
-    _sobrenomeCtrl.text = partes.length > 1 ? partes.last : '';
+    _nomeCtrl.text = _extractFirstSocio(api) ?? '';
     _emailCtrl.text = api['email'] as String? ?? '';
     final ddd = api['ddd_1'] as String? ?? '';
     final tel = api['tel_1'] as String? ?? '';
     _telefoneCtrl.text = '$ddd$tel';
-    _nomeSocioCtrl.text = socio;
-    _nomeProprietarioCtrl.text = socio;
   }
 
   Future<void> _validateCnpj() async {
@@ -169,34 +130,20 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
   }
 
   Future<void> _submit() async {
-    // Valida campos obrigatórios
-    final campos = <String, String?>{
-      'Primeiro nome':
-          _primeiroNomeCtrl.text.isEmpty ? null : _primeiroNomeCtrl.text,
-      'Sobrenome': _sobrenomeCtrl.text.isEmpty ? null : _sobrenomeCtrl.text,
-      'Email do contato': _emailCtrl.text.isEmpty ? null : _emailCtrl.text,
-      'Telefone do sócio':
-          _telefoneCtrl.text.isEmpty ? null : _telefoneCtrl.text,
-      'Nome do sócio': _nomeSocioCtrl.text.isEmpty ? null : _nomeSocioCtrl.text,
-      'Nome do proprietário': _nomeProprietarioCtrl.text.isEmpty
-          ? null
-          : _nomeProprietarioCtrl.text,
-      'Procuração': _procuracao,
-      'Possui débitos': _possuiDebitos,
-      'Valor da dívida': _valorDivida,
-      'Regime tributário': _regimeTributario,
-      'Análises a serem feitas': _analises,
-      'Validade e-CAC': _validadeEcac,
-      'Setor da empresa': _setorEmpresaKey,
-      'Departamentos': _departamento,
-      'Tipo de lead': _tipoLead,
-      'Prioridade': _prioridadeKey,
-    };
-
-    final ausentes =
-        campos.entries.where((e) => e.value == null).map((e) => e.key).toList();
+    final nome = _nomeCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final telefone = _telefoneCtrl.text.trim();
+    final ausentes = [
+      if (nome.isEmpty) 'Nome completo do responsável',
+      if (telefone.isEmpty) 'Telefone',
+      if (email.isEmpty) 'E-mail',
+    ];
     if (ausentes.isNotEmpty) {
       setState(() => _errorMessage = 'Preencha: ${ausentes.join(', ')}');
+      return;
+    }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      setState(() => _errorMessage = 'E-mail inválido.');
       return;
     }
 
@@ -207,7 +154,6 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
 
     try {
       final service = ref.read(registrationServiceProvider);
-      final profile = ref.read(profileProvider).value;
       final groupId = ref.read(activeGroupProvider)?.group.id;
       if (groupId == null) {
         setState(() => _errorMessage =
@@ -215,37 +161,25 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
         return;
       }
 
+      // 1) carteira da organização. Repetir é seguro: a RPC não duplica.
       await service.saveCompany(
           groupId, _dadosApi!, _empresaLat!, _empresaLon!, _precisao!);
 
-      final dadosForm = {
-        'primeiro_nome': _primeiroNomeCtrl.text,
-        'nome_completo': _nomeCompletoCtrl.text,
-        'sobrenome': _sobrenomeCtrl.text,
-        'email_contato': _emailCtrl.text,
-        'telefone_socio': _telefoneCtrl.text,
-        'nome_socio': _nomeSocioCtrl.text,
-        'nome_proprietario': _nomeProprietarioCtrl.text,
-        'para_quem_procuracao_habilitada': _procuracao,
-        'possui_debitos': _possuiDebitos,
-        'valor_divida': _valorDivida,
-        'regime_tributario': _regimeTributario,
-        'analises_a_serem_feitas': _analises,
-        'validade_ecac': _validadeEcac,
-        'setor_empresa': _setorEmpresaKey,
-        'departamentos': _departamento,
-        'tipo_lead': _tipoLead,
-        'prioridade': _prioridadeKey,
-      };
-
-      // O webhook leva o cadastro ao CRM do RUMO: só pra organização configurada.
-      if (service.webhookEnabledFor(groupId)) {
-        await service.sendToWebhook(
-          _dadosApi!,
-          dadosForm,
-          profile?.email ?? '',
-          profile?.nome ?? '',
-        );
+      // 2) CRM da organização: o responsável vira contato da empresa, e o
+      // Backend cria a empresa no CRM se ela ainda não estiver lá. Não existe
+      // CRM global: tudo vai para o que a organização conectou.
+      try {
+        await ref.read(crmServiceProvider).addContactToCompany(
+              cnpj: _dadosApi!['cnpj'] as String,
+              nome: nome,
+              telefone: telefone,
+              email: email,
+            );
+      } catch (e) {
+        setState(() => _errorMessage =
+            'A empresa foi salva na carteira, mas não chegou ao CRM: $e\n'
+            'Toque em "Salvar e Enviar para CRM" de novo para reenviar.');
+        return;
       }
 
       if (mounted) Navigator.pop(context, true);
@@ -299,7 +233,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              _step == 1 ? 'Nova Empresa' : 'Dados Complementares',
+              _step == 1 ? 'Nova Empresa' : 'Responsável',
               style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -404,65 +338,12 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           ),
         ),
 
-        _textField('Primeiro nome', _primeiroNomeCtrl),
-        _textField('Nome completo', _nomeCompletoCtrl),
-        _textField('Sobrenome', _sobrenomeCtrl),
-        _textField('Email do contato', _emailCtrl,
-            keyboardType: TextInputType.emailAddress),
-        _textField('Telefone do sócio', _telefoneCtrl,
+        _textField('Nome completo do responsável', _nomeCtrl,
+            capitalization: TextCapitalization.words),
+        _textField('Telefone', _telefoneCtrl,
             keyboardType: TextInputType.phone),
-        _textField('Nome do sócio principal', _nomeSocioCtrl),
-        _textField('Nome do proprietário', _nomeProprietarioCtrl),
-
-        _selectField(
-          'Para quem a procuração eletrônica está habilitada?',
-          _procuracao,
-          kProcuracoes,
-          (v) => setState(() => _procuracao = v),
-        ),
-        _smallSelectField(
-          'Possui débitos?',
-          _possuiDebitos,
-          const ['Sim', 'Não'],
-          (v) => setState(() => _possuiDebitos = v),
-        ),
-        _selectField(
-          'Valor da dívida',
-          _valorDivida,
-          kValoresDivida,
-          (v) => setState(() => _valorDivida = v),
-        ),
-        _selectField(
-          'Regime tributário',
-          _regimeTributario,
-          kRegimesTributarios,
-          (v) => setState(() => _regimeTributario = v),
-        ),
-        _smallSelectField(
-          'Análises a serem feitas',
-          _analises,
-          kAnalises,
-          (v) => setState(() => _analises = v),
-        ),
-        _dateField(
-          'Data de validade e-CAC',
-          _validadeEcac,
-          (v) => setState(() => _validadeEcac = v),
-        ),
-        _setorField(),
-        _selectField(
-          'Departamentos',
-          _departamento,
-          kDepartamentos,
-          (v) => setState(() => _departamento = v),
-        ),
-        _smallSelectField(
-          'Tipo de lead',
-          _tipoLead,
-          const ['Novo lead', 'Cliente da base'],
-          (v) => setState(() => _tipoLead = v),
-        ),
-        _prioridadeField(),
+        _textField('E-mail', _emailCtrl,
+            keyboardType: TextInputType.emailAddress),
 
         const SizedBox(height: 24),
         CupertinoButton.filled(
@@ -497,6 +378,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
     String label,
     TextEditingController controller, {
     TextInputType keyboardType = TextInputType.text,
+    TextCapitalization capitalization = TextCapitalization.none,
   }) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -513,6 +395,7 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
             controller: controller,
             style: const TextStyle(color: CupertinoColors.white),
             keyboardType: keyboardType,
+            textCapitalization: capitalization,
             decoration: BoxDecoration(
               color: CupertinoColors.darkBackgroundGray,
               borderRadius: BorderRadius.circular(10),
@@ -521,377 +404,4 @@ class _AddCompanyModalState extends ConsumerState<AddCompanyModal> {
           ),
         ],
       );
-
-  Widget _selectField(
-    String label,
-    String? current,
-    List<String> options,
-    void Function(String?) onChanged,
-  ) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 14, bottom: 6),
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CupertinoColors.systemGrey)),
-          ),
-          GestureDetector(
-            onTap: () => _showSearchSheet(label, options, onChanged),
-            child:
-                _dropdownContainer(current ?? 'Selecione...', current != null),
-          ),
-        ],
-      );
-
-  Widget _smallSelectField(
-    String label,
-    String? current,
-    List<String> options,
-    void Function(String?) onChanged,
-  ) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 14, bottom: 6),
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CupertinoColors.systemGrey)),
-          ),
-          GestureDetector(
-            onTap: () => _showActionSheet(label, options, onChanged),
-            child:
-                _dropdownContainer(current ?? 'Selecione...', current != null),
-          ),
-        ],
-      );
-
-  Widget _dropdownContainer(String text, bool hasValue) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: CupertinoColors.darkBackgroundGray,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: hasValue
-                      ? CupertinoColors.white
-                      : CupertinoColors.systemGrey2,
-                  fontSize: 15,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const Icon(CupertinoIcons.chevron_down,
-                size: 14, color: CupertinoColors.systemGrey),
-          ],
-        ),
-      );
-
-  Widget _dateField(
-    String label,
-    String? current,
-    void Function(String) onChanged,
-  ) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 14, bottom: 6),
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CupertinoColors.systemGrey)),
-          ),
-          GestureDetector(
-            onTap: () => _showDatePicker(onChanged),
-            child: _dropdownContainer(
-                current ?? 'Selecione a data', current != null),
-          ),
-        ],
-      );
-
-  Widget _setorField() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 14, bottom: 6),
-            child: Text('Setor da empresa',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CupertinoColors.systemGrey)),
-          ),
-          GestureDetector(
-            onTap: _showSetorSheet,
-            child: _dropdownContainer(
-                _setorEmpresaLabel ?? 'Selecione...', _setorEmpresaKey != null),
-          ),
-        ],
-      );
-
-  Widget _prioridadeField() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 14, bottom: 6),
-            child: Text('Prioridade',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CupertinoColors.systemGrey)),
-          ),
-          GestureDetector(
-            onTap: () => _showActionSheet(
-              'Prioridade',
-              kPrioridades.values.toList(),
-              (label) {
-                if (label == null) return;
-                final key = kPrioridades.entries
-                    .firstWhere((e) => e.value == label)
-                    .key;
-                setState(() => _prioridadeKey = key);
-              },
-            ),
-            child: _dropdownContainer(
-              _prioridadeKey != null
-                  ? kPrioridades[_prioridadeKey]!
-                  : 'Selecione...',
-              _prioridadeKey != null,
-            ),
-          ),
-        ],
-      );
-
-  // ─── PICKERS / SHEETS ──────────────────────────────────────────────────────
-
-  void _showSearchSheet(
-    String title,
-    List<String> options,
-    void Function(String?) onChanged,
-  ) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => _SearchSheet(
-        title: title,
-        options: options,
-        onSelected: (v) {
-          onChanged(v);
-          Navigator.pop(ctx);
-        },
-      ),
-    );
-  }
-
-  void _showActionSheet(
-    String title,
-    List<String> options,
-    void Function(String?) onChanged,
-  ) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: Text(title),
-        actions: options
-            .map((opt) => CupertinoActionSheetAction(
-                  onPressed: () {
-                    onChanged(opt);
-                    Navigator.pop(ctx);
-                  },
-                  child: Text(opt),
-                ))
-            .toList(),
-        cancelButton: CupertinoActionSheetAction(
-          isDestructiveAction: true,
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancelar'),
-        ),
-      ),
-    );
-  }
-
-  void _showDatePicker(void Function(String) onChanged) {
-    DateTime selected = DateTime.now();
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => Container(
-        height: 320,
-        color: CupertinoColors.darkBackgroundGray,
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CupertinoButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-                CupertinoButton(
-                  child: const Text('OK'),
-                  onPressed: () {
-                    final formatted =
-                        '${selected.day.toString().padLeft(2, '0')}/${selected.month.toString().padLeft(2, '0')}/${selected.year}';
-                    onChanged(formatted);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ],
-            ),
-            Expanded(
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.date,
-                initialDateTime: DateTime.now(),
-                minimumYear: 2020,
-                maximumYear: 2035,
-                onDateTimeChanged: (dt) => selected = dt,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showSetorSheet() {
-    final labels = kSetores.entries.map((e) => e.value).toList();
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => _SearchSheet(
-        title: 'Setor da empresa',
-        options: labels,
-        onSelected: (label) {
-          if (label != null) {
-            final key =
-                kSetores.entries.firstWhere((e) => e.value == label).key;
-            setState(() {
-              _setorEmpresaKey = key;
-              _setorEmpresaLabel = label;
-            });
-          }
-          Navigator.pop(ctx);
-        },
-      ),
-    );
-  }
-}
-
-// ─── SEARCH SHEET (reutilizável neste arquivo) ─────────────────────────────
-
-class _SearchSheet extends StatefulWidget {
-  final String title;
-  final List<String> options;
-  final void Function(String?) onSelected;
-
-  const _SearchSheet({
-    required this.title,
-    required this.options,
-    required this.onSelected,
-  });
-
-  @override
-  State<_SearchSheet> createState() => _SearchSheetState();
-}
-
-class _SearchSheetState extends State<_SearchSheet> {
-  late List<String> _filtered;
-  final _ctrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _filtered = widget.options;
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _filter(String q) {
-    setState(() {
-      _filtered = q.isEmpty
-          ? widget.options
-          : widget.options
-              .where((o) => o.toLowerCase().contains(q.toLowerCase()))
-              .toList();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      color: CupertinoColors.black,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(widget.title,
-                      style: const TextStyle(
-                          color: CupertinoColors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold)),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    child: const Text('Fechar'),
-                    onPressed: () => widget.onSelected(null),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: CupertinoSearchTextField(
-                controller: _ctrl,
-                placeholder: 'Buscar...',
-                style: const TextStyle(color: CupertinoColors.white),
-                onChanged: _filter,
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _filtered.length,
-                itemBuilder: (_, i) {
-                  final opt = _filtered[i];
-                  return GestureDetector(
-                    onTap: () => widget.onSelected(opt),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      decoration: const BoxDecoration(
-                        border: Border(
-                            bottom: BorderSide(
-                                color: CupertinoColors.darkBackgroundGray)),
-                      ),
-                      child: Text(opt,
-                          style: const TextStyle(
-                              color: CupertinoColors.white, fontSize: 15)),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -19,9 +19,8 @@ class CompanyLookupService:
     O contrato de saída preserva de propósito as mesmas chaves que o
     provedor antigo produzia (`razao`, `fantasia`, `log_tipo`, `ddd_1`/
     `tel_1`, etc.), pra não exigir nenhuma mudança em
-    lib/features/company/registration_service.dart (saveCompany/
-    sendToWebhook) nem em add_company_modal.dart — só o nome do
-    método/rota muda no lado do app."""
+    lib/features/company/registration_service.dart (saveCompany) nem em
+    add_company_modal.dart — só o nome do método/rota muda no lado do app."""
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client or httpx.AsyncClient(base_url=BASE_URL, timeout=10.0)

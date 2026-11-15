@@ -30,18 +30,26 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA t TO web_user, crm_sync;
 -- ── Cenário ─────────────────────────────────────────────────────────────────
 --   u1  admin da organização g1        u2  admin da organização g2
 --   u3  SEM organização                u4  membro comum de g1 (departamento Vendas)
+--   u5  admin de g3, organização que NÃO conectou um CRM (019)
 INSERT INTO public.profiles (id, email, nome, departamento, nivel_acesso) VALUES
   ('u1', 'u1@x', 'U1', 'Gestão', 'user'),
   ('u2', 'u2@x', 'U2', 'Gestão', 'user'),
   ('u3', 'u3@x', 'U3', 'Gestão', 'user'),
-  ('u4', 'u4@x', 'U4', 'Vendas', 'user');
+  ('u4', 'u4@x', 'U4', 'Vendas', 'user'),
+  ('u5', 'u5@x', 'U5', 'Gestão', 'user');
 INSERT INTO public.groups (id, name, invite_hash, created_by) VALUES
   ('00000000-0000-0000-0000-0000000000a1', 'G1', 'hash-g1', 'u1'),
-  ('00000000-0000-0000-0000-0000000000a2', 'G2', 'hash-g2', 'u2');
+  ('00000000-0000-0000-0000-0000000000a2', 'G2', 'hash-g2', 'u2'),
+  ('00000000-0000-0000-0000-0000000000a3', 'G3 sem CRM', 'hash-g3', 'u5');
 INSERT INTO public.group_members (group_id, user_id, role) VALUES
   ('00000000-0000-0000-0000-0000000000a1', 'u1', 'admin'),
   ('00000000-0000-0000-0000-0000000000a1', 'u4', 'member'),
-  ('00000000-0000-0000-0000-0000000000a2', 'u2', 'admin');
+  ('00000000-0000-0000-0000-0000000000a2', 'u2', 'admin'),
+  ('00000000-0000-0000-0000-0000000000a3', 'u5', 'admin');
+-- g1 e g2 conectaram um CRM; g3 não (sem CRM, a organização não usa o sistema)
+INSERT INTO public.crm_conexoes (group_id, provedor, token_cifrado) VALUES
+  ('00000000-0000-0000-0000-0000000000a1', 'hubspot', 'x'),
+  ('00000000-0000-0000-0000-0000000000a2', 'hubspot', 'x');
 INSERT INTO public.companies (id, cnpj, razao_social, uf, produto, latitude, longitude) VALUES
   ('00000000-0000-0000-0000-0000000000c1', '11111111000111', 'Empresa G1 a', 'SC', NULL,          -26.48, -49.07),
   ('00000000-0000-0000-0000-0000000000c2', '22222222000122', 'Empresa G1 b', 'SC', NULL,          -26.49, -49.08),
@@ -192,6 +200,15 @@ SET LOCAL ROLE web_user;
 SELECT set_config('request.jwt.claims', '{"sub":"u3"}', true);
 SELECT t.ok((SELECT count(*) FROM public.companies) = 0, 'sem organização continua vendo 0, mesmo depois de uma importação');
 RESET ROLE;
+
+-- ═══ u5: organização sem CRM conectado não busca nem cadastra (019) ═══════
+SET LOCAL ROLE web_user;
+SELECT set_config('request.jwt.claims', '{"sub":"u5"}', true);
+SELECT t.raises($$SELECT * FROM public.search_companies(p_group_id := '00000000-0000-0000-0000-0000000000a3')$$, 'não conectou um CRM');
+SELECT t.raises($$SELECT public.register_company('00000000-0000-0000-0000-0000000000a3', '{"cnpj":"66666666000166","razao_social":"X"}')$$, 'não conectou um CRM');
+SELECT t.ok(NOT public.group_has_crm('00000000-0000-0000-0000-0000000000a3') AND public.group_has_crm('00000000-0000-0000-0000-0000000000a1'), 'group_has_crm responde pra quem não lê crm_conexoes');
+RESET ROLE;
+SELECT t.ok(NOT EXISTS (SELECT 1 FROM public.companies WHERE cnpj = '66666666000166'), 'o cadastro recusado não deixou empresa no catálogo');
 
 ROLLBACK;
 \echo OK: isolamento entre organizações verificado

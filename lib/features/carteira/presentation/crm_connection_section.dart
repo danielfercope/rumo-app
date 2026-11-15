@@ -182,8 +182,9 @@ class CrmConnectionSection extends ConsumerWidget {
 
   Widget _buildDisconnected(BuildContext context, WidgetRef ref) {
     return _section(
-      footer: const Text('Nenhum CRM conectado. Conecte o HubSpot para '
-          'importar sua carteira de clientes e leads.'),
+      footer: const Text('Nenhum CRM conectado. Sem ele a organização não usa '
+          'o mapa, os leads nem o cadastro de empresas: conecte o HubSpot para '
+          'importar a carteira de clientes e leads.'),
       children: [
         CupertinoListTile.notched(
           leading: _badge(CupertinoIcons.link, CupertinoColors.systemOrange),

@@ -93,19 +93,19 @@ lib/
     │   ├── models/enrichment_models.dart # envelope (ok/vazio/indisponivel/desativado) + ReceitaData, ComprasData, …
     │   ├── services/enrichment_service.dart # GET /backend/enriquecimento/{fonte}
     │   ├── providers/enrichment_provider.dart # enrichmentProvider.family((groupId, cnpj, fonte))
-    │   └── presentation/enrichment_cards.dart # DetailCard: resumo sempre visível, detalhes ao tocar
+    │   └── presentation/enrichment_cards.dart # Receita, governo e economia — DetailCard: resumo sempre visível, detalhes ao tocar
+    │   └── presentation/google_profile.dart # topo dos detalhes no estilo perfil: capa (foto do Google), nota/situação, horário de hoje
     │
     ├── leads/                         # Busca textual de leads + visão "Prioridades" (segmento no topo)
     │   ├── leads_page.dart
     │   └── leads_search_provider.dart # leadsSearchQueryProvider + leadsResultsProvider
     │
     └── company/                       # Cadastro de novas empresas
-        ├── add_company_modal.dart     # Multi-step modal (3 passos)
+        ├── add_company_modal.dart     # 2 passos: CNPJ (+ proximidade) → responsável (nome, telefone, e-mail)
         ├── crm_service.dart           # Integração com o CRM via ApiClient (nome
         │                              # agnóstico de fornecedor — hoje é o HubSpot)
-        ├── registration_service.dart  # Consulta de CNPJ (via ApiClient) + geocoding +
-        │                              # RPC register_company (carteira da organização ativa)
-        └── constants.dart             # Dropdowns: departamentos, setores, regimes, etc.
+        └── registration_service.dart  # Consulta de CNPJ (via ApiClient) + geocoding +
+                                       # RPC register_company (carteira da organização ativa)
 ```
 
 ---
@@ -184,11 +184,10 @@ flowchart TD
     DETAILS -->|CRM| HS_NOTES_VIEW[Notas + Contatos]
     DETAILS -->|rota| MAPS[Google Maps externo]
 
-    ADD -->|step 1| CNPJ_STEP[CNPJ + BrasilAPI]
-    ADD -->|step 2| SOCIO_STEP[Dados sócio]
-    ADD -->|step 3| COMP_STEP[Dados complementares]
-    COMP_STEP -->|salvar| BACKEND[(Backend self-hospedado)]
-    COMP_STEP -->|webhook| CRM[(CRM Webhook)]
+    ADD -->|passo 1| CNPJ_STEP[CNPJ + BrasilAPI + proximidade]
+    ADD -->|passo 2| RESP_STEP[Responsável: nome, telefone, e-mail]
+    RESP_STEP -->|salvar| BACKEND[(Backend self-hospedado)]
+    RESP_STEP -->|responsável vira contato| CRM[(CRM da organização)]
 ```
 
 ---
@@ -214,6 +213,8 @@ GPS (geolocator)
 
 - **Android/iOS**: OSM quando `GOOGLE_API_KEY` está vazia. O plugin não avisa quando a chave é rejeitada, então só a ausência é detectada.
 - **Web**: OSM quando `web/env.js` não tem chave, quando o script do Google não carrega, ou quando o Google chama `gm_authFailure` (chave inválida, cota, domínio não autorizado) — `web/index.html` marca `window.__gmapsFailed` e dispara o evento `gmaps-auth-failure`.
+
+No Web o Google Maps é um elemento HTML que recebe roda/toques mesmo com um widget por cima: os modais da `RadarPage` (`_showModal`) põem um `PointerInterceptor` na tela toda pra o mapa não mexer atrás deles.
 
 No OSM não existe camada híbrida (o botão de tipo de mapa some) e os marcadores usam os mesmos assets do Google Maps. Os tiles vêm de `tile.openstreetmap.org` (política de uso justo; pra tráfego alto, trocar por um servidor de tiles próprio/pago em `OsmMap`). Nos testes, `FixedMapBackend` (`test/helpers/fake_google_maps.dart`) fixa o backend.
 
@@ -246,9 +247,9 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 
 | Função | Parâmetros | Retorno |
 |---|---|---|
-| `search_companies` | lat, lon, radius_km, query, segment, state, city, cnae, is_client, limit, **group_id (obrigatório)** (o parâmetro `product` ainda existe no banco, mas o app não filtra mais por produto) | `List<Company>` — unifica busca por raio, texto e filtros. Só devolve a **carteira da organização** `group_id` (exige ser membro); `cliente` e `status_carteira` vêm dela. Sem `group_id` ou sem ser membro: erro |
+| `search_companies` | lat, lon, radius_km, query, segment, state, city, cnae, is_client, limit, **group_id (obrigatório)** (o parâmetro `product` ainda existe no banco, mas o app não filtra mais por produto) | `List<Company>` — unifica busca por raio, texto e filtros. Só devolve a **carteira da organização** `group_id` (exige ser membro e a organização ter CRM conectado); `cliente` e `status_carteira` vêm dela. Sem `group_id` ou sem ser membro: erro |
 | `get_filter_options` | — | `{segments, products, states, cnaes, state_to_cities}` (o app ignora `products`) — roda com as permissões de quem chama, então só vê opções das empresas das próprias organizações |
-| `register_company` | group_id, data (jsonb) | Cadastro manual: cria a empresa no catálogo (sem sobrescrever uma que já exista) e a põe na carteira da organização como `lead`/`manual`. Exige membro + (admin da organização ou `can_add_company()`). Devolve `{company_id, already_in_portfolio}` — nunca revela se a empresa já existia |
+| `register_company` | group_id, data (jsonb) | Cadastro manual: cria a empresa no catálogo (sem sobrescrever uma que já exista) e a põe na carteira da organização como `lead`/`manual`. Exige membro + organização com CRM conectado + (admin da organização ou `can_add_company()`). Devolve `{company_id, already_in_portfolio}` — nunca revela se a empresa já existia |
 | `portfolio_has_cnpj` | group_id, cnpj | `boolean` — o CNPJ está na carteira DESSA organização? (Não dá pra descobrir se existe em outra) |
 | `ensure_profile` | nome, departamento | Cria/retorna o `profile` do usuário autenticado |
 
@@ -256,11 +257,11 @@ O app **não grava mais direto** em `companies` nem nas tabelas satélite: o cad
 
 ### Isolamento entre organizações
 
-A base de clientes é **da organização**: só quem é membro dela vê o que ela possui, e quem não pertence a nenhuma organização não vê nada (sem mapa, busca, leads). É imposto em três camadas, e a que vale é a do servidor:
+A base de clientes é **da organização**: só quem é membro dela vê o que ela possui, e quem não pertence a nenhuma organização não vê nada (sem mapa, busca, leads). **Não existe conta nem base global**: a organização só usa o sistema depois de conectar o próprio CRM (`crm_conexoes`); sem ele, nem busca, nem cadastro, nem detalhes. É imposto em três camadas, e a que vale é a do servidor:
 
-1. **Banco** (`015_isolamento_organizacao.sql`): `companies`, `company_financial_profile`, `company_contacts` e `company_crm_sync` só são legíveis se `company_in_my_orgs(company_id)` — a empresa está na carteira de uma organização de que o usuário é membro. `web_user` não tem INSERT/UPDATE/DELETE nelas (escrita só pelas RPCs acima e pelo papel `crm_sync` do Backend, que enxerga tudo pra sincronizar).
-2. **Backend**: `/company-lookup` exige pertencer a alguma organização; `/crm` exige `group_id`, ser membro, o CNPJ estar na carteira dessa organização e a organização ser a dona do CRM global (`CRM_LEGACY_GROUP_ID`) — as demais ainda não têm notas/contatos (`AccessService`). O webhook de cadastro (`URL_WEBHOOK_CRM`) só recebe cadastros da organização `WEBHOOK_CRM_GROUP_ID` (build do app); vazio = ninguém.
-3. **App**: `MainNavigation` só tem as abas Radar e Leads pra quem tem organização; sem ela existem apenas **Organização** (criar uma — e o assistente de conexão do CRM abre em seguida — ou entrar com o código de convite) e **Perfil**. Quem está em mais de uma organização troca a ativa pelo botão "Trocar" da aba Organização. As buscas nem chamam o servidor sem organização ativa.
+1. **Banco** (`015_isolamento_organizacao.sql`): `companies`, `company_financial_profile`, `company_contacts` e `company_crm_sync` só são legíveis se `company_in_my_orgs(company_id)` — a empresa está na carteira de uma organização de que o usuário é membro. `web_user` não tem INSERT/UPDATE/DELETE nelas (escrita só pelas RPCs acima e pelo papel `crm_sync` do Backend, que enxerga tudo pra sincronizar). `019_organizacao_exige_crm.sql`: `search_companies` e `register_company` recusam organização sem CRM conectado (`group_has_crm`) — **em produção, aplicar à mão** (o `migrate` do `isolate_organizations.sh` aplica).
+2. **Backend** (`AccessService`): `/company-lookup` exige pertencer a uma organização com CRM; `/crm` e `/enriquecimento` exigem `group_id`, ser membro, a organização ter CRM (`require_crm`, senão 403) e o CNPJ estar na carteira dela. As notas/contatos vêm do CRM que a organização conectou (`OrganizationCrm`: token de `crm_conexoes` + `carteira_empresas.crm_object_id`, sem buscar por CNPJ). Empresa cadastrada no app que ainda não está no CRM é **criada nele na primeira gravação** (nota ou contato) e o ID vai pra `crm_object_id`. Token sem escopo (401/403 do HubSpot) vira 403 com a explicação.
+3. **App**: `MainNavigation` só tem as abas Radar e Leads pra quem está numa organização **com CRM conectado** (`activeGroupHasCrmProvider`); sem isso existem apenas **Organização** (criar uma — e o assistente de conexão do CRM abre em seguida —, entrar com o código de convite ou, sendo admin, conectar o CRM, que aparece no topo; membro comum vê "Aguardando o CRM") e **Perfil**. Quem está em mais de uma organização troca a ativa pelo botão "Trocar" da aba Organização; quem já tem uma entra noutra (código de convite) ou cria outra pela seção "Outras organizações" da mesma aba — a nova vira a ativa (e, se criada, abre o assistente do CRM). As buscas nem chamam o servidor sem organização ativa.
 
 Testes: `make test-db` (`db/tests/isolation_test.sql`, num Postgres descartável: vários usuários e organizações) + os testes do backend e do app. **Mexeu em RLS, RPC de busca ou nas rotas do Backend? Rode `make test-db`.**
 
@@ -282,8 +283,8 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 **Autenticação**: o app troca o `idToken` do Firebase por um JWT interno (`POST /backend/auth/exchange`), que o PostgREST usa pra aplicar RLS via `SET ROLE` (`auth_uid()` em `db/schema/003_roles_rls.sql`).
 
 **Integrações externas** — nomeadas de forma agnóstica de fornecedor (`CompanyLookupService`, `CrmService`), pra trocar de provedor sem reescrever a estrutura:
-- `/company-lookup` (`backend/app/services/company_lookup_service.py`) — hoje consulta a [BrasilAPI](https://brasilapi.com.br/) (pública, gratuita, sem token). Devolve o mesmo shape de chaves que o provedor antigo produzia, pra não exigir mudança nenhuma em `RegistrationService.saveCompany`/`sendToWebhook`.
-- `/crm` (`backend/app/services/crm_service.py`) — hoje integra com o HubSpot (API v3/v4), localizando a Company pelo CNPJ via uma propriedade customizada cujo nome interno é configurável (`CRM_CNPJ_PROPERTY_NAME`, porque é criada manualmente na conta do CRM). 4 ações: `getNotesWithOwners`, `getContacts`, `addContact`, `addNote`.
+- `/company-lookup` (`backend/app/services/company_lookup_service.py`) — hoje consulta a [BrasilAPI](https://brasilapi.com.br/) (pública, gratuita, sem token). Devolve o mesmo shape de chaves que o provedor antigo produzia, pra não exigir mudança nenhuma em `RegistrationService.saveCompany`.
+- `/crm` (`backend/app/services/crm_service.py`) — hoje integra com o HubSpot (API v3/v4), com o token e a propriedade de CNPJ que a organização conectou (`OrganizationCrm`). 4 ações: `getNotesWithOwners`, `getContacts`, `addContact`, `addNote`; as duas de escrita criam a empresa no CRM se ela ainda não estiver lá.
 
 **Sincronização CRM → banco** (`backend/app/services/crm_sync_service.py`) — a fonte das empresas é o CRM: a cada `CRM_SYNC_INTERVAL_SECONDS` (600) um loop `asyncio` iniciado no `lifespan` do FastAPI traz pro banco as empresas novas do CRM (com CNPJ preenchido), já enriquecidas e geocodificadas. **Nunca lista o CRM nem varre `companies`**:
 - Checagem barata: 1 consulta à marca d'água (`crm_sync_state`) + 1 chamada ao Search do HubSpot filtrada por `hs_object_id > marca d'água` (ordenada, `limit` 100; IDs do HubSpot são crescentes) + 1 consulta à fila `crm_sync_pending` (tabela minúscula). Sem novidade, nada é escrito.
@@ -295,7 +296,7 @@ Arquitetura local, orquestrada por `docker-compose.backend.yml` (distinto do `do
 
 **Sincronização por organização** (`backend/app/services/carteira_sync_service.py`) — substitui, por conexão, o sync de conta única acima (que continua no código, desligado). Cada organização conecta o próprio CRM com um token (`crm_conexoes`, cifrado com Fernet por `CRM_TOKEN_ENCRYPTION_KEY`); a cada `CRM_SYNC_INTERVAL_SECONDS` o job percorre as conexões `ativa`, em sequência:
 - Lê do CRM só o que **mudou** desde a marca d'água `crm_conexoes.ultima_modificacao_crm` (por data de modificação, com a mesma janela de sobreposição), então pega mudança de status e não só empresa nova. Marca d'água gravada por página, então uma carga que cai no meio retoma dali.
-- `CrmConnector` (`crm_connector.py`) é a interface por CRM (`validate`, `list_properties`, `fetch_changes`); `HubSpotConnector` é o primeiro. Só dados de **empresa** são lidos (nunca contatos/notas/negócios). `CrmMapping` (`crm_conexoes.mapeamento`) diz qual propriedade é o CNPJ e que valores do estágio significam cliente/perdido (o resto é lead).
+- `CrmConnector` (`crm_connector.py`) é a interface por CRM (`validate`, `list_properties`, `fetch_changes`); `HubSpotConnector` é o primeiro. A sincronização só lê dados de **empresa** (nunca contatos/notas/negócios); notas e contatos são lidos/gravados sob demanda pela rota `/crm` dos detalhes, com o mesmo token — exige que ele tenha esses escopos. `CrmMapping` (`crm_conexoes.mapeamento`) diz qual propriedade é o CNPJ e que valores do estágio significam cliente/perdido (o resto é lead).
 - `companies` é global: CNPJ já trazido por outra organização não é reconsultado na BrasilAPI/Google. O status vai pra `carteira_empresas`. Falhas por empresa vão pra `carteira_pendencias` (máx. 5 tentativas).
 - Sem novidade, escreve só `ultima_sincronizacao` na conexão. Ligar com `CRM_CONNECTIONS_SYNC_ENABLED=true` (exige `CRM_TOKEN_ENCRYPTION_KEY` e `GEOCODING_API_KEY`). **Perder/trocar a chave de cifra obriga todas as organizações a reconectar.** Em produção, a chave entra no Secrets Manager junto das demais variáveis de `infra/.env`.
 
@@ -320,7 +321,7 @@ O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada
 - `compras` — Compras.gov.br (dados abertos): SICAF e itens ganhos em licitações do PNCP (Lei 14.133), últimos 12 meses e os 12 anteriores (a API aceita no máximo 365 dias); detalhe das 5 maiores no PNCP (órgão, objeto, modalidade). Cache de 1 dia.
 - `comex` — Comex Stat (MDIC): exportação/importação do **município** no último ano fechado (produtos SH4 e países). Não há comércio exterior por CNPJ em API pública. Cache de 30 dias.
 - `municipio` — IBGE: população, PIB e PIB per capita. Cache de 30 dias.
-- `google` — Google Places (API New) com a `GEOCODING_API_KEY` (precisa da Places API ativada): foto de capa (com crédito do autor), nota, avaliações, telefone, site, horários. **Sob demanda e cobrado por consulta**: o app só chama quando a pessoa toca em "Ver no Google". **Termos do Google Maps: só o `place_id` fica guardado** (`enriquecimento_cache`, fonte `google_place_id`, 12 meses); nota, horários e foto são buscados a cada pedido (Place Details pelo id; busca por texto só na 1ª vez ou se o id deixar de existir). "Não encontrado" fica 7 dias, pra não repetir busca paga. A foto vem como link temporário do googleusercontent (sem a chave). `ENRICHMENT_GOOGLE_PLACES_ENABLED=false` desliga. "Aberto agora" é calculado no horário de Brasília.
+- `google` — Google Places (API New) com a `GEOCODING_API_KEY` (precisa da Places API ativada): foto de capa (com crédito do autor), nota, avaliações, telefone, site, horários. **Consultado ao abrir os detalhes e cobrado por consulta** (cada abertura = uma consulta): alimenta o topo da tela (capa, nota, site) e é a fonte preferida de telefone, endereço e horário (depois cadastro, depois Receita). **Termos do Google Maps: só o `place_id` fica guardado** (`enriquecimento_cache`, fonte `google_place_id`, 12 meses); nota, horários e foto são buscados a cada pedido (Place Details pelo id; busca por texto só na 1ª vez ou se o id deixar de existir). "Não encontrado" fica 7 dias, pra não repetir busca paga. A foto vem como link temporário do googleusercontent (sem a chave). `ENRICHMENT_GOOGLE_PLACES_ENABLED=false` desliga. "Aberto agora" é calculado no horário de Brasília.
 
 Migração nova com tabela/coluna? Termine com `NOTIFY pgrst, 'reload schema';` — senão o PostgREST não enxerga a mudança até reiniciar.
 
@@ -337,11 +338,10 @@ Acessadas em código via `AppConfig` (`lib/core/app_config.dart`).
 
 | Variável | Uso |
 |---|---|
-| `API_BASE_URL` | URL base do backend self-hospedado (Caddy) — default `http://localhost:8080` |
+| `API_BASE_URL` | URL base do backend (Caddy). Fica **fora** do `.env` local: `make run` passa o IP atual da máquina; sem ela, o Web usa `http://<host da página>:8080` e o resto `http://localhost:8080`. Só pra apontar pra outro backend (o deploy passa a de produção) |
 | `SERVER_WEB_CLIENT_ID` | OAuth Google (Web / servidor) |
 | `CLIENT_ID` | OAuth Google (iOS) |
 | `GOOGLE_API_KEY` | Google Maps + Geocoding (no iOS nativo, precisa ser duplicada em `ios/Flutter/Secrets.xcconfig` — ver "Executando o projeto localmente") |
-| `URL_WEBHOOK_CRM` | Webhook de CRM chamado após cadastro de empresa |
 
 > O backend self-hospedado tem seu próprio arquivo de variáveis (`infra/.env`, a partir de `infra/.env.example`) — não listado aqui, que é só do app Flutter.
 
@@ -470,11 +470,12 @@ Ordem pra subir uma versão: **merge na `main`** (PR `dev` → `main`) → `make
 **Isolamento entre organizações em produção** (`infra/scripts/isolate_organizations.sh`, `INSTANCE_ID=<id>`; `DRY_RUN=1` só mostra os comandos). Atenção: **o app antigo deixa de funcionar** assim que a `015` entra (a busca passa a exigir organização), então publique o app novo logo em seguida. Ordem:
 
 1. `make deploy` — backend novo (`/crm` e `/company-lookup` passam a exigir organização).
-2. `migrate` — leva a EC2 pra `main` e aplica a `015`.
+2. `migrate` — leva a EC2 pra `main` e aplica a `015` e a `019` (organização sem CRM conectado não busca nem cadastra).
 3. `legacy <uuid-da-organização>` — associa a base atual (sem dono) a essa organização; antes, `COUNT_ONLY=1` mostra quantas empresas são. **Sem este passo, as empresas atuais ficam invisíveis pra todos** (nada é apagado).
-4. `config <uuid-da-organização>` — grava `CRM_LEGACY_GROUP_ID` (a organização dona do CRM global) e **desliga o sync antigo de conta única** (`CRM_SYNC_ENABLED=false`, que importaria empresas sem organização).
+4. `config` — **desliga o sync antigo de conta única** (`CRM_SYNC_ENABLED=false`, que importaria empresas sem organização).
 5. `verify` — só leitura: simula um usuário sem organização e confere que ele vê 0 empresas e que a busca é recusada.
-6. `make deploy-web` / `make deploy-apk` — se a organização do passo 3 deve continuar enviando cadastros ao webhook de CRM, ponha `WEBHOOK_CRM_GROUP_ID=<uuid>` no `.env` do build (sem isso o webhook fica desligado).
+6. Um admin da organização do passo 3 conecta o CRM dela (aba Organização) — sem isso ela não usa o sistema.
+7. `make deploy-web` / `make deploy-apk`.
 
 Configuração manual fora do código: Firebase > Authentication > *Authorized domains* precisa
 incluir `rumo-app.duckdns.org` (senão o login com Google no site falha); pro login com Google no
@@ -509,7 +510,7 @@ RadarPage
 
 ### Permissões de cadastro
 
-Só cadastra quem é membro da organização ativa **e** é admin dela ou tem `UserProfile.canAddCompany` (`register_company` confere no banco). `canAddCompany` é `true` se:
+Só cadastra quem é membro da organização ativa, com a organização **com CRM conectado**, **e** é admin dela ou tem `UserProfile.canAddCompany` (`register_company` confere no banco; no app, `canRegisterCompanyProvider`). Ao salvar, o responsável (nome, telefone, e-mail) vira contato da empresa no CRM da organização (`/crm` `addContact`, que cria a empresa no CRM se preciso) — não há webhook nem CRM global. `canAddCompany` é `true` se:
 - `departamento` ∈ `{Pré-vendas, Gestão, Administração Interna}`
 - OU `nivelAcesso == 'admin'`
 
@@ -524,6 +525,14 @@ cp infra/.env.example infra/.env
 make db-up            # sobe db + postgrest + backend + caddy
 make data             # opcional — popula empresas fictícias pra testar o radar
 ```
+
+### Jeito curto (qualquer plataforma)
+
+```bash
+make run DEVICE=chrome   # ou DEVICE=<id> de `flutter devices`
+```
+
+`infra/scripts/run_app.sh`: abre o Docker, `make db-up` e passa `API_BASE_URL=http://<IP atual>:8080` — ninguém precisa editar IP no `.env` ao trocar de rede.
 
 ### Via web
 
@@ -567,6 +576,9 @@ Build de release exige `android/key.properties` (não versionado) apontando para
 ## Comandos úteis
 
 ```bash
+# Sobe o backend e roda o app com o IP atual (Web: DEVICE=chrome)
+make run DEVICE=chrome
+
 # Desenvolvimento web com variáveis de ambiente
 flutter run -d chrome --dart-define-from-file=.env
 

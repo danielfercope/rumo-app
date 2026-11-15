@@ -40,32 +40,6 @@ void main() {
     });
   });
 
-  group('webhookEnabledFor', () {
-    test('só a organização configurada envia ao CRM do RUMO', () {
-      final s = RegistrationService(mockApiClient,
-          webhookGroupId: 'g-rumo', webhookUrl: 'https://crm.exemplo/hook');
-
-      expect(s.webhookEnabledFor('g-rumo'), isTrue);
-      expect(s.webhookEnabledFor('outra'), isFalse);
-      expect(s.webhookEnabledFor(null), isFalse);
-    });
-
-    test('sem organização configurada, ninguém envia', () {
-      final s = RegistrationService(mockApiClient,
-          webhookGroupId: '', webhookUrl: 'https://crm.exemplo/hook');
-
-      expect(s.webhookEnabledFor('g-rumo'), isFalse);
-      expect(s.webhookEnabledFor(''), isFalse);
-    });
-
-    test('sem URL do webhook, ninguém envia', () {
-      final s = RegistrationService(mockApiClient,
-          webhookGroupId: 'g-rumo', webhookUrl: '');
-
-      expect(s.webhookEnabledFor('g-rumo'), isFalse);
-    });
-  });
-
   group('fetchCompanyData', () {
     test("chama o backend em 'company-lookup' com o cnpj e devolve o map",
         () async {

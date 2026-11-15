@@ -100,10 +100,8 @@ void main() {
     testWidgets('resumos ficam visíveis sem abrir nada', (tester) async {
       await pumpCards(tester, FakeEnrichmentService(allSources()));
 
-      // Google: só um convite, sem consultar (é cobrado)
-      expect(find.text('No Google'), findsOneWidget);
-      expect(find.text('Ver no Google'), findsOneWidget);
-      expect(find.text('4,7'), findsNothing);
+      // O Google não é um bloco: alimenta o topo dos detalhes
+      expect(find.text('No Google'), findsNothing);
       // Receita
       expect(find.text('Ativa'), findsOneWidget);
       expect(find.text('Lucro Real'), findsOneWidget);
@@ -123,53 +121,6 @@ void main() {
       // detalhes fechados
       expect(find.text('Quadro de sócios e administradores'.toUpperCase()),
           findsNothing);
-    });
-
-    testWidgets('Google só é consultado ao tocar em "Ver no Google"',
-        (tester) async {
-      final service = FakeEnrichmentService(allSources());
-      await pumpCards(tester, service);
-      expect(service.calls, isNot(contains(EnrichmentSource.google)));
-
-      await tester.tap(find.text('Ver no Google'));
-      await tester.pumpAndSettle();
-
-      expect(
-          service.calls.where((c) => c == EnrichmentSource.google).length, 1);
-      expect(find.byKey(const ValueKey('google-foto')), findsOneWidget);
-      expect(find.text('Foto: Alexandre de Castro · Google'), findsOneWidget);
-      expect(find.text('WEG S/A'), findsOneWidget);
-      expect(find.text('4,7'), findsOneWidget);
-      expect(find.text('  (405 avaliações)'), findsOneWidget);
-      expect(find.text('Aberto agora'), findsOneWidget);
-      expect(find.text('Maps'), findsOneWidget);
-      expect(find.text('Site'), findsOneWidget);
-    });
-
-    testWidgets('Google sem foto: só os dados', (tester) async {
-      final semFoto = Map<String, dynamic>.from(googleJson)..remove('foto');
-      await pumpCards(
-          tester,
-          FakeEnrichmentService({
-            ...allSources(),
-            EnrichmentSource.google: envelope('google', semFoto)
-          }));
-      await tester.tap(find.text('Ver no Google'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('google-foto')), findsNothing);
-      expect(find.text('4,7'), findsOneWidget);
-    });
-
-    testWidgets('Google: empresa não encontrada', (tester) async {
-      await pumpCards(
-          tester,
-          FakeEnrichmentService({
-            ...allSources(),
-            EnrichmentSource.google: envelope('google', null, status: 'vazio'),
-          }));
-      await tester.tap(find.text('Ver no Google'));
-      await tester.pumpAndSettle();
-      expect(find.text('Empresa não encontrada no Google.'), findsOneWidget);
     });
 
     testWidgets('tocar abre os detalhes: sócios, CNAEs, tributação',
@@ -218,23 +169,18 @@ void main() {
       expect(find.text('Sem cadastro no SICAF'), findsOneWidget);
     });
 
-    testWidgets('Google desligado (após pedir) e cidade sem dado: blocos somem',
+    testWidgets('cidade sem dado: o bloco de economia some',
         (tester) async {
       await pumpCards(
           tester,
           FakeEnrichmentService({
             EnrichmentSource.receita: envelope('receita', receitaJson),
             EnrichmentSource.compras: envelope('compras', comprasJson),
-            EnrichmentSource.google:
-                envelope('google', null, status: 'desativado'),
             EnrichmentSource.municipio:
                 envelope('municipio', null, status: 'vazio'),
             EnrichmentSource.comex: envelope('comex', null, status: 'vazio'),
           }));
       expect(find.textContaining('Economia'), findsNothing);
-      await tester.tap(find.text('Ver no Google'));
-      await tester.pumpAndSettle();
-      expect(find.text('No Google'), findsNothing);
       expect(find.text('Receita Federal'), findsOneWidget);
     });
 
@@ -299,9 +245,123 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Map<EnrichmentSource, Map<String, dynamic>> semGoogle() => {
+          ...allSources(),
+          EnrichmentSource.google: envelope('google', null, status: 'vazio'),
+        };
+
     testWidgets(
-        'empresa sem contato no cadastro usa os da Receita; '
-        'campos sem dado não aparecem; o Google não é consultado sozinho',
+        'abre já consultando o Google: capa, nota, site, telefone e endereço',
+        (tester) async {
+      final company = Company(
+        id: 'c1',
+        name: 'WEG',
+        cnpj: '07175725000160',
+        telefone: '4733334444',
+        address: 'Endereço do cadastro',
+        isClient: false,
+        distance: 1.5,
+        latitude: -26.4,
+        longitude: -49.1,
+      );
+      final service = FakeEnrichmentService(allSources());
+      await pumpModal(tester, company, service);
+
+      expect(
+          service.calls.where((c) => c == EnrichmentSource.google).length, 1);
+      expect(find.byKey(const ValueKey('google-foto')), findsOneWidget);
+      expect(find.text('Foto: Alexandre de Castro · Google'), findsOneWidget);
+      final nota = tester
+          .widget<Text>(find.byKey(const ValueKey('google-nota')))
+          .textSpan!
+          .toPlainText();
+      expect(nota, contains('4,7'));
+      expect(nota, contains('(405)'));
+      expect(nota, contains('Aberto agora'));
+      expect(find.text('weg.net'), findsOneWidget);
+      // Google tem prioridade sobre o cadastro e a Receita
+      expect(find.text('(47) 3276-4000'), findsOneWidget);
+      expect(find.text('4733334444'), findsNothing);
+      expect(find.text('Av. Pref. Waldemar Grubba, 3300 - Jaraguá do Sul - SC'),
+          findsOneWidget);
+      expect(find.text('Endereço do cadastro'), findsNothing);
+      expect(find.text('1.50 km de você'), findsOneWidget);
+      // nada de bloco "No Google" nem botão pra pedir
+      expect(find.text('Ver no Google'), findsNothing);
+      expect(find.text('No Google'), findsNothing);
+    });
+
+    testWidgets('ordem: ações, site, contato, CRM e só depois dados públicos',
+        (tester) async {
+      final company = Company(
+        id: 'c1',
+        name: 'WEG',
+        cnpj: '07175725000160',
+        isClient: false,
+      );
+      await pumpModal(tester, company, FakeEnrichmentService(allSources()));
+
+      double y(Finder f) => tester.getTopLeft(f).dy;
+      final acoes = y(find.text('Novo Contato'));
+      final site = y(find.byKey(const ValueKey('site-empresa')));
+      final telefone = y(find.text('Telefone'));
+      final crm = y(find.text('Contatos CRM'));
+      final receita = y(find.text('Receita Federal'));
+      expect(acoes, lessThan(site));
+      expect(site, lessThan(telefone));
+      expect(telefone, lessThan(crm));
+      expect(crm, lessThan(receita));
+    });
+
+    testWidgets('tocar na capa abre a foto em tela cheia e o X fecha',
+        (tester) async {
+      await pumpModal(
+          tester,
+          Company(id: 'c1', name: 'WEG', cnpj: '07175725000160'),
+          FakeEnrichmentService(allSources()));
+      expect(find.byKey(const ValueKey('google-foto-ampliada')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('google-foto-abrir')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('google-foto-ampliada')), findsOneWidget);
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      // o crédito do autor continua visível na foto ampliada
+      expect(find.text('Foto: Alexandre de Castro · Google'), findsNWidgets(2));
+
+      await tester.tap(find.byKey(const ValueKey('google-foto-fechar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('google-foto-ampliada')), findsNothing);
+    });
+
+    testWidgets('na foto ampliada, arrastar pra baixo fecha', (tester) async {
+      await pumpModal(
+          tester,
+          Company(id: 'c1', name: 'WEG', cnpj: '07175725000160'),
+          FakeEnrichmentService(allSources()));
+      await tester.tap(find.byKey(const ValueKey('google-foto-abrir')));
+      await tester.pumpAndSettle();
+
+      await tester.drag(
+          find.byType(InteractiveViewer), const Offset(0, 300));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('google-foto-ampliada')), findsNothing);
+    });
+
+    testWidgets('Google sem foto: capa neutra, o resto continua',
+        (tester) async {
+      final semFoto = Map<String, dynamic>.from(googleJson)..remove('foto');
+      await pumpModal(
+          tester,
+          Company(id: 'c1', name: 'WEG', cnpj: '07175725000160'),
+          FakeEnrichmentService(
+              {...allSources(), EnrichmentSource.google: envelope('google', semFoto)}));
+      expect(find.byKey(const ValueKey('google-foto')), findsNothing);
+      expect(find.byKey(const ValueKey('google-nota')), findsOneWidget);
+      expect(find.text('weg.net'), findsOneWidget);
+    });
+
+    testWidgets(
+        'sem Google: contatos do cadastro e da Receita; campos sem dado somem',
         (tester) async {
       final company = Company(
         id: 'c1',
@@ -311,11 +371,11 @@ void main() {
         carteiraStatus: 'lead',
         distance: 3,
       );
-      final service = FakeEnrichmentService(allSources());
-      await pumpModal(tester, company, service);
+      await pumpModal(tester, company, FakeEnrichmentService(semGoogle()));
 
-      expect(service.calls, isNot(contains(EnrichmentSource.google)));
-      expect(find.text('Contatos e Endereço'), findsOneWidget);
+      expect(find.byKey(const ValueKey('google-foto')), findsNothing);
+      expect(find.byKey(const ValueKey('google-nota')), findsNothing);
+      expect(find.byKey(const ValueKey('site-empresa')), findsNothing);
       expect(find.text('(47) 3276-4775'), findsOneWidget);
       expect(find.text('fiscal@weg.net'), findsOneWidget);
       expect(find.textContaining('Avenida Prefeito Waldemar Grubba, 3000'),
@@ -331,25 +391,42 @@ void main() {
       expect(find.text('Informações'), findsNothing);
     });
 
-    testWidgets('contatos vêm antes dos blocos de dados públicos',
-        (tester) async {
-      final company = Company(
-        id: 'c1',
-        name: 'WEG',
-        cnpj: '07175725000160',
-        telefone: '4733334444',
-        isClient: false,
-      );
-      await pumpModal(tester, company, FakeEnrichmentService(allSources()));
-
-      final contatos = tester.getTopLeft(find.text('Contatos e Endereço')).dy;
-      final receita = tester.getTopLeft(find.text('Receita Federal')).dy;
-      final google = tester.getTopLeft(find.text('No Google')).dy;
-      expect(contatos, lessThan(google));
-      expect(google, lessThan(receita));
-      // o telefone do cadastro tem prioridade sobre o da Receita
+    testWidgets('o telefone do cadastro vence o da Receita', (tester) async {
+      await pumpModal(
+          tester,
+          Company(
+              id: 'c1',
+              name: 'WEG',
+              cnpj: '07175725000160',
+              telefone: '4733334444'),
+          FakeEnrichmentService(semGoogle()));
       expect(find.text('4733334444'), findsOneWidget);
       expect(find.text('(47) 3276-4775'), findsNothing);
+    });
+
+    testWidgets('horário: hoje visível, a semana ao tocar', (tester) async {
+      final semana = [
+        'segunda-feira: 07:30–17:00',
+        'terça-feira: 07:30–17:00',
+        'quarta-feira: 07:30–17:00',
+        'quinta-feira: 07:30–17:00',
+        'sexta-feira: 07:30–17:00',
+        'sábado: Fechado',
+        'domingo: Fechado',
+      ];
+      await pumpModal(
+          tester,
+          Company(id: 'c1', name: 'WEG', cnpj: '07175725000160'),
+          FakeEnrichmentService({
+            ...allSources(),
+            EnrichmentSource.google:
+                envelope('google', {...googleJson, 'horarios': semana}),
+          }));
+      expect(find.textContaining('Hoje: '), findsOneWidget);
+      expect(find.text('Segunda-feira: 07:30–17:00'), findsNothing);
+      await tester.tap(find.text('Horário'));
+      await tester.pump();
+      expect(find.text('Segunda-feira: 07:30–17:00'), findsOneWidget);
     });
   });
 }

@@ -1,20 +1,22 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 class AppConfig {
   static const serverWebClientId =
       String.fromEnvironment('SERVER_WEB_CLIENT_ID');
   static const clientId = String.fromEnvironment('CLIENT_ID');
   static const googleApiKey = String.fromEnvironment('GOOGLE_API_KEY');
-  static const urlWebhookCrm = String.fromEnvironment('URL_WEBHOOK_CRM');
 
-  /// Organização (UUID do grupo) cujos cadastros de empresa seguem para o webhook
-  /// de CRM acima — o CRM do próprio RUMO. Vazio = o webhook não é chamado pra
-  /// ninguém: dado de uma organização não pode ir parar no CRM de outra parte.
-  static const webhookCrmGroupId =
-      String.fromEnvironment('WEBHOOK_CRM_GROUP_ID');
+  // Backend (PostgREST + serviço Python) atrás do Caddy. Em produção o build
+  // passa API_BASE_URL (deploy_frontend.sh). Localmente ela pode ficar vazia:
+  // `make run` descobre o IP da máquina pra celular/emulador, e no Web o padrão
+  // é o host que serviu a página na porta do Caddy (8080) — nada de IP fixo no .env.
+  static const _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL');
 
-  // Backend novo (PostgREST + serviço Python) atrás do Caddy — local: Caddy em
-  // docker-compose.backend.yml (porta 8080); prod: domínio DuckDNS (semana 3).
-  static const apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://localhost:8080',
-  );
+  static String get apiBaseUrl {
+    if (_apiBaseUrlOverride.isNotEmpty) return _apiBaseUrlOverride;
+    if (kIsWeb && Uri.base.host.isNotEmpty) {
+      return 'http://${Uri.base.host}:8080';
+    }
+    return 'http://localhost:8080';
+  }
 }

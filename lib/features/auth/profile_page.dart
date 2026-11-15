@@ -85,7 +85,9 @@ class ProfilePage extends ConsumerWidget {
                       icon: CupertinoIcons.building_2_fill,
                       label: 'Cadastrar empresas',
                       value:
-                          profile.canAddCompany ? 'Permitido' : 'Sem permissão',
+                          ref.watch(canRegisterCompanyProvider)
+                              ? 'Permitido'
+                              : 'Sem permissão',
                     ),
                   ],
                 ),
