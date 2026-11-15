@@ -9,7 +9,6 @@ import '../../../helpers/fakes.dart';
 void main() {
   final options = <String, dynamic>{
     'segments': ['Varejo'],
-    'products': ['Adubo'],
     'states': ['SC'],
     'cnaes': ['4712100'],
     'stateToCities': {

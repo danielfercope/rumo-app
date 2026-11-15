@@ -66,7 +66,7 @@ String explanationSummary(PriorityExplanation e) {
     final names = top.map((f) => '${f.campo} (${f.valor})').join(' e ');
     final vezes = top.first.vezes;
     parts.add('Parece com os seus clientes principalmente em $names'
-        '${vezes != null ? ': esse valor é ${_x(vezes)} mais comum entre eles do que na base' : ''}.');
+        '${vezes != null ? ': esse valor é ${_x(vezes)} mais comum entre eles do que no resto da sua carteira' : ''}.');
   }
   if (contra.isNotEmpty) {
     parts.add('Pesa contra: ${contra.first.campo} (${contra.first.valor}).');

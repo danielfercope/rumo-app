@@ -19,8 +19,9 @@ Future<void> _open(String url) async {
 
 String _count(num v) => formatCompactBr(v, prefix: '').trim();
 
-/// Os blocos de dados públicos dos detalhes, na ordem: Google, Receita,
-/// vendas ao governo e economia do município. Cada um carrega sozinho.
+/// Os blocos de dados públicos dos detalhes, na ordem: Receita, vendas ao
+/// governo e economia do município. Cada um carrega sozinho. O Google não fica
+/// aqui: alimenta o topo dos detalhes (capa, telefone, endereço, site).
 class CompanyEnrichmentCards extends StatelessWidget {
   const CompanyEnrichmentCards(
       {super.key, required this.groupId, required this.cnpj});
@@ -36,7 +37,6 @@ class CompanyEnrichmentCards extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        GoogleCard(sourceKey: _k(EnrichmentSource.google)),
         ReceitaCard(sourceKey: _k(EnrichmentSource.receita)),
         ComprasCard(sourceKey: _k(EnrichmentSource.compras)),
         EconomiaCard(
@@ -251,29 +251,6 @@ class _Heading extends StatelessWidget {
       );
 }
 
-class _LinkButton extends StatelessWidget {
-  const _LinkButton(this.label, this.icon, this.url);
-  final String label;
-  final IconData icon;
-  final String url;
-
-  @override
-  Widget build(BuildContext context) => CupertinoButton(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        minimumSize: Size.zero,
-        color: _accent.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(16),
-        onPressed: () => _open(url),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: _accent),
-          const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600, color: _accent)),
-        ]),
-      );
-}
-
 /// Barra horizontal de participação (produtos, países).
 class _ShareRow extends StatelessWidget {
   const _ShareRow(this.label, this.share, this.trailing,
@@ -385,212 +362,6 @@ class _SourceState extends ConsumerWidget {
           line(r.mensagem ?? 'Fonte indisponível agora.', trailing: retry),
         _ => emptyText == null ? const SizedBox.shrink() : line(emptyText!),
       },
-    );
-  }
-}
-
-// ─── Google ──────────────────────────────────────────────────────────
-
-/// Sob demanda: cada consulta ao Google é cobrada, então só busca quando a
-/// pessoa toca em "Ver no Google" (e busca de novo a cada abertura: pelos
-/// termos do Google, o conteúdo não pode ficar guardado).
-class GoogleCard extends StatefulWidget {
-  const GoogleCard({super.key, required this.sourceKey});
-  final EnrichmentKey sourceKey;
-
-  @override
-  State<GoogleCard> createState() => _GoogleCardState();
-}
-
-class _GoogleCardState extends State<GoogleCard> {
-  bool _requested = false;
-
-  static const _icon = CupertinoIcons.star_fill;
-  static const _color = CupertinoColors.systemOrange;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_requested) {
-      return DetailCard(
-        key: const ValueKey('card-google-pedir'),
-        icon: _icon,
-        iconColor: _color,
-        title: 'No Google',
-        summary: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Foto, nota, avaliações, horário e site da empresa.',
-                style: TextStyle(fontSize: 13, color: _muted, height: 1.3),
-              ),
-            ),
-            const SizedBox(width: 10),
-            CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              minimumSize: Size.zero,
-              color: _accent,
-              borderRadius: BorderRadius.circular(16),
-              onPressed: () => setState(() => _requested = true),
-              child: const Text('Ver no Google',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: CupertinoColors.white)),
-            ),
-          ],
-        ),
-      );
-    }
-    return _SourceState(
-      sourceKey: widget.sourceKey,
-      icon: _icon,
-      iconColor: _color,
-      title: 'No Google',
-      emptyText: 'Empresa não encontrada no Google.',
-      builder: (r) => GoogleView(result: r),
-    );
-  }
-}
-
-class GoogleView extends StatelessWidget {
-  const GoogleView({super.key, required this.result});
-  final EnrichmentResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = GooglePlaceData.fromJson(result.dados!);
-    final closed = g.situacao != null && g.situacao != 'Em funcionamento';
-    return DetailCard(
-      key: const ValueKey('card-google'),
-      icon: _GoogleCardState._icon,
-      iconColor: _GoogleCardState._color,
-      title: 'No Google',
-      initiallyExpanded: false,
-      footer: _footer(result, 'confira se é a mesma empresa'),
-      summary: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (g.fotoUrl != null) _CoverPhoto(g),
-          if (g.nome != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(g.nome!,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700, color: _ink)),
-            ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (g.nota != null)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(CupertinoIcons.star_fill,
-                      size: 15, color: CupertinoColors.systemYellow),
-                  const SizedBox(width: 3),
-                  Text(g.nota!.toStringAsFixed(1).replaceAll('.', ','),
-                      style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: _ink)),
-                  if (g.avaliacoes != null)
-                    Text('  (${formatThousandsBr(g.avaliacoes!)} avaliações)',
-                        style: const TextStyle(fontSize: 12, color: _muted)),
-                ]),
-              if (closed)
-                Pill(g.situacao!, color: _bad)
-              else if (g.abertoAgora == true)
-                const Pill('Aberto agora', color: _good)
-              else if (g.abertoAgora == false)
-                const Pill('Fechado agora'),
-              if (g.tipo != null) Pill(g.tipo!, color: _accent),
-            ],
-          ),
-          if (g.mapsUrl != null || g.site != null || g.telefone != null) ...[
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 6, children: [
-              if (g.mapsUrl != null)
-                _LinkButton('Maps', CupertinoIcons.map_fill, g.mapsUrl!),
-              if (g.site != null)
-                _LinkButton('Site', CupertinoIcons.globe, g.site!),
-              if (g.telefone != null)
-                _LinkButton('Ligar', CupertinoIcons.phone_fill,
-                    'tel:${g.telefone!.replaceAll(RegExp(r'[^0-9+]'), '')}'),
-            ]),
-          ],
-        ],
-      ),
-      details: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Kv('Endereço', g.endereco),
-          _Kv('Telefone', g.telefone),
-          _Kv('Site', g.site),
-          if (g.horarios.isNotEmpty) ...[
-            const _Heading('Horário de funcionamento'),
-            for (final h in g.horarios)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Text(_cap(h),
-                    style: const TextStyle(fontSize: 12, color: _ink)),
-              ),
-            const SizedBox(height: 6),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Foto de capa com o crédito do autor (exigido pelo Google). Se a imagem não
-/// carregar, some sem deixar buraco.
-class _CoverPhoto extends StatelessWidget {
-  const _CoverPhoto(this.g);
-  final GooglePlaceData g;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Image.network(
-                g.fotoUrl!,
-                key: const ValueKey('google-foto'),
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) => progress == null
-                    ? child
-                    : const ColoredBox(
-                        color: CupertinoColors.systemGrey5,
-                        child: Center(child: CupertinoActivityIndicator()),
-                      ),
-                errorBuilder: (_, __, ___) => const ColoredBox(
-                  color: CupertinoColors.systemGrey5,
-                  child: Center(
-                    child: Icon(CupertinoIcons.photo,
-                        color: CupertinoColors.systemGrey2),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (g.fotoAutor != null)
-            GestureDetector(
-              onTap:
-                  g.fotoAutorUrl == null ? null : () => _open(g.fotoAutorUrl!),
-              child: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('Foto: ${g.fotoAutor} · Google',
-                    style: const TextStyle(fontSize: 10, color: _muted)),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

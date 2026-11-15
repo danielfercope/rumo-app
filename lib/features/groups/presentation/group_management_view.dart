@@ -74,6 +74,8 @@ class GroupManagementView extends ConsumerWidget {
     final myGroups = ref.watch(myGroupsProvider).value ?? [];
     final active = ref.watch(activeGroupProvider);
     final isAdmin = ref.watch(isActiveGroupAdminProvider);
+    // Sem CRM a organização não usa o sistema: conectar vem antes de tudo.
+    final semCrm = ref.watch(activeGroupHasCrmProvider).valueOrNull == false;
 
     if (active == null) {
       return const Center(child: CupertinoActivityIndicator());
@@ -112,6 +114,10 @@ class GroupManagementView extends ConsumerWidget {
               ? () => _pickGroup(context, ref, myGroups, group.id)
               : null,
         ),
+        if (semCrm)
+          isAdmin
+              ? CrmConnectionSection(groupId: group.id)
+              : const _CrmPendingNotice(),
         const _PrivacyNote(),
         CupertinoListSection.insetGrouped(
           header: const Text('Membros'),
@@ -191,11 +197,81 @@ class GroupManagementView extends ConsumerWidget {
                 ),
             ],
           ),
-          CrmConnectionSection(groupId: group.id),
+          if (!semCrm) CrmConnectionSection(groupId: group.id),
         ],
+        CupertinoListSection.insetGrouped(
+          header: const Text('Outras organizações'),
+          children: [
+            CupertinoListTile.notched(
+              key: const ValueKey('entrar-outra-organizacao'),
+              leading: const _IconBadge(CupertinoIcons.qrcode_viewfinder,
+                  CupertinoColors.systemIndigo),
+              title: const Text('Entrar com código de convite'),
+              trailing: const CupertinoListTileChevron(),
+              onTap: () => _joinAnother(context, ref),
+            ),
+            CupertinoListTile.notched(
+              key: const ValueKey('criar-outra-organizacao'),
+              leading: const _IconBadge(
+                  CupertinoIcons.plus, CupertinoColors.systemGreen),
+              title: const Text('Criar nova organização'),
+              trailing: const CupertinoListTileChevron(),
+              onTap: () => _createAnother(context, ref),
+            ),
+          ],
+        ),
       ],
     );
   }
+
+  /// Entra noutra organização pelo código e já a deixa ativa.
+  Future<void> _joinAnother(BuildContext context, WidgetRef ref) async {
+    final hash = await _askText(context,
+        title: 'Entrar com código',
+        message: 'Cole o código de convite que o administrador enviou.',
+        placeholder: 'Código de convite',
+        action: 'Entrar');
+    if (hash == null || !context.mounted) return;
+    await _runOrShowError(context, () async {
+      final group = await ref.read(groupServiceProvider).joinByHash(hash);
+      ref.read(activeGroupIdProvider.notifier).state = group.id;
+      ref.invalidate(myGroupsProvider);
+    });
+  }
+
+  /// Cria outra organização, deixa ativa e abre o assistente do CRM (sem CRM
+  /// ela não usa o sistema).
+  Future<void> _createAnother(BuildContext context, WidgetRef ref) async {
+    final name = await _askText(context,
+        title: 'Nova organização',
+        message: 'Você será o administrador e, em seguida, conecta o CRM dela.',
+        placeholder: 'Nome da organização',
+        action: 'Criar');
+    if (name == null || !context.mounted) return;
+    await _runOrShowError(context, () async {
+      final group = await ref.read(groupServiceProvider).createGroup(name);
+      ref.read(activeGroupIdProvider.notifier).state = group.id;
+      ref.read(pendingCrmSetupGroupIdProvider.notifier).state = group.id;
+      ref.invalidate(myGroupsProvider);
+    });
+  }
+
+  Future<String?> _askText(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String placeholder,
+    required String action,
+  }) =>
+      showCupertinoDialog<String>(
+        context: context,
+        builder: (_) => _TextPromptDialog(
+          title: title,
+          message: message,
+          placeholder: placeholder,
+          action: action,
+        ),
+      );
 
   Future<void> _pickGroup(BuildContext context, WidgetRef ref,
       List<MyGroup> groups, String activeId) async {
@@ -345,9 +421,8 @@ class _PrivacyNote extends StatelessWidget {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Os clientes e leads do Radar e da aba Leads pertencem só a '
-                'esta organização. Outras organizações não os enxergam, e você '
-                'não vê os delas.',
+                'Os clientes e leads presentes no mapa pertencem só a '
+                'esta organização. ',
                 style:
                     TextStyle(fontSize: 13, color: CupertinoColors.systemGrey),
               ),
@@ -483,4 +558,90 @@ class _InviteSheet extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Membro (não admin) de uma organização sem CRM: não há o que usar até um
+/// administrador conectar.
+class _CrmPendingNotice extends StatelessWidget {
+  const _CrmPendingNotice();
+
+  @override
+  Widget build(BuildContext context) => CupertinoListSection.insetGrouped(
+        header: const Text('Integração com CRM'),
+        footer: const Text(
+            'O mapa, os leads e o cadastro de empresas ficam disponíveis assim '
+            'que um administrador conectar o CRM da organização.'),
+        children: const [
+          CupertinoListTile.notched(
+            key: ValueKey('crm-pendente'),
+            leading: Icon(CupertinoIcons.exclamationmark_circle_fill,
+                color: CupertinoColors.systemOrange),
+            title: Text('Aguardando o CRM'),
+            subtitle: Text('Peça a um administrador para conectar'),
+          ),
+        ],
+      );
+}
+
+/// Diálogo com um campo de texto; devolve o texto (sem espaços nas pontas) ou
+/// null se cancelar.
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({
+    required this.title,
+    required this.message,
+    required this.placeholder,
+    required this.action,
+  });
+
+  final String title;
+  final String message;
+  final String placeholder;
+  final String action;
+
+  @override
+  State<_TextPromptDialog> createState() => _TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    if (text.isNotEmpty) Navigator.pop(context, text);
+  }
+
+  @override
+  Widget build(BuildContext context) => CupertinoAlertDialog(
+        title: Text(widget.title),
+        content: Column(
+          children: [
+            Text(widget.message),
+            const SizedBox(height: 12),
+            CupertinoTextField(
+              key: const ValueKey('texto-dialogo'),
+              controller: _controller,
+              placeholder: widget.placeholder,
+              autofocus: true,
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: _submit,
+            child: Text(widget.action),
+          ),
+        ],
+      );
 }

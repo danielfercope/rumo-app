@@ -7,7 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/features/auth/providers/profile_provider.dart';
 import 'package:rumo_app/features/company/add_company_modal.dart';
-import 'package:rumo_app/features/company/constants.dart';
+import 'package:rumo_app/features/company/crm_service.dart';
 import 'package:rumo_app/features/company/registration_service.dart';
 import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/models/group_model.dart';
@@ -15,6 +15,8 @@ import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/map/providers/location_provider.dart';
 
 class MockRegistrationService extends Mock implements RegistrationService {}
+
+class MockCrmService extends Mock implements CrmService {}
 
 Position _pos() => Position(
       latitude: -26.48,
@@ -59,12 +61,12 @@ final _grupo = MyGroup(
 
 void main() {
   late MockRegistrationService service;
+  late MockCrmService crm;
 
   setUp(() {
     service = MockRegistrationService();
     when(() => service.cnpjInPortfolio(any(), any()))
         .thenAnswer((_) async => false);
-    when(() => service.webhookEnabledFor(any())).thenReturn(true);
     when(() => service.fetchCompanyData(any()))
         .thenAnswer((_) async => Map<String, dynamic>.from(_dadosApi));
     when(() => service.geocodeAddress(any())).thenAnswer(
@@ -73,8 +75,13 @@ void main() {
         .thenReturn(true);
     when(() => service.saveCompany(any(), any(), any(), any(), any()))
         .thenAnswer((_) async => false);
-    when(() => service.sendToWebhook(any(), any(), any(), any()))
-        .thenAnswer((_) async => true);
+    crm = MockCrmService();
+    when(() => crm.addContactToCompany(
+          cnpj: any(named: 'cnpj'),
+          nome: any(named: 'nome'),
+          telefone: any(named: 'telefone'),
+          email: any(named: 'email'),
+        )).thenAnswer((_) async {});
   });
 
   /// Abre o modal dentro de uma rota, pra conseguir observar o `pop(true)`.
@@ -87,6 +94,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       registrationServiceProvider.overrideWithValue(service),
+      crmServiceProvider.overrideWithValue(crm),
       activeGroupProvider.overrideWithValue(withGroup ? _grupo : null),
       locationProvider.overrideWith((ref) =>
           withLocation ? Future.value(_pos()) : Completer<Position>().future),
@@ -130,51 +138,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> pickFromSheet(
-      WidgetTester tester, String fieldLabel, String option) async {
-    final field = find.descendant(
-      of: find
-          .ancestor(of: find.text(fieldLabel), matching: find.byType(Column))
-          .first,
-      matching: find.byType(GestureDetector),
-    );
-    await tester.ensureVisible(field.first);
+  Future<void> tapSalvar(WidgetTester tester) async {
+    await tester.ensureVisible(find.text('Salvar e Enviar para CRM'));
     await tester.pumpAndSettle();
-    await tester.tap(field.first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(option).last);
+    await tester.tap(find.text('Salvar e Enviar para CRM'));
     await tester.pumpAndSettle();
   }
 
-  Future<void> fillSelects(WidgetTester tester) async {
-    await pickFromSheet(
-        tester,
-        'Para quem a procuração eletrônica está habilitada?',
-        kProcuracoes.first);
-    await pickFromSheet(tester, 'Possui débitos?', 'Sim');
-    await pickFromSheet(tester, 'Valor da dívida', kValoresDivida.first);
-    await pickFromSheet(tester, 'Regime tributário', kRegimesTributarios.first);
-    await pickFromSheet(tester, 'Análises a serem feitas', kAnalises.first);
-    // Data
-    final dateField = find.descendant(
-      of: find
-          .ancestor(
-              of: find.text('Data de validade e-CAC'),
-              matching: find.byType(Column))
-          .first,
-      matching: find.byType(GestureDetector),
-    );
-    await tester.ensureVisible(dateField.first);
-    await tester.pumpAndSettle();
-    await tester.tap(dateField.first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    await pickFromSheet(tester, 'Setor da empresa', kSetores.values.first);
-    await pickFromSheet(tester, 'Departamentos', kDepartamentos.first);
-    await pickFromSheet(tester, 'Tipo de lead', 'Novo lead');
-    await pickFromSheet(tester, 'Prioridade', kPrioridades.values.first);
-  }
+  Finder campo(String label) => find
+      .descendant(
+        of: find.ancestor(of: find.text(label), matching: find.byType(Column)),
+        matching: find.byType(CupertinoTextField),
+      )
+      .first;
 
   group('passo 1', () {
     testWidgets('mostra o título e valida o tamanho do CNPJ', (tester) async {
@@ -242,19 +218,30 @@ void main() {
   });
 
   group('passo 2', () {
-    testWidgets('preenche os campos a partir da consulta', (tester) async {
+    testWidgets(
+        'pede só nome do responsável, telefone e e-mail, já preenchidos',
+        (tester) async {
       await pumpModal(tester);
       await goToStep2(tester);
 
-      expect(find.text('Dados Complementares'), findsOneWidget);
+      expect(find.text('Responsável'), findsOneWidget);
       expect(find.text('Teste'), findsOneWidget);
-      expect(find.text('Maria'), findsOneWidget); // primeiro nome
-      expect(find.text('Lima'), findsOneWidget); // sobrenome
-      expect(find.text('a@b.com'), findsOneWidget);
+      expect(find.byType(CupertinoTextField), findsNWidgets(3));
+      expect(find.text('Maria Souza Lima'), findsOneWidget);
       expect(find.text('47999999999'), findsOneWidget);
+      expect(find.text('a@b.com'), findsOneWidget);
+      for (final antiga in [
+        'Possui débitos?',
+        'Regime tributário',
+        'Prioridade',
+        'Tipo de lead',
+        'Setor da empresa',
+      ]) {
+        expect(find.text(antiga), findsNothing);
+      }
     });
 
-    testWidgets('sem sócio nos dados deixa os nomes vazios', (tester) async {
+    testWidgets('sem sócio nos dados deixa o nome vazio', (tester) async {
       when(() => service.fetchCompanyData(any())).thenAnswer((_) async => {
             'razao': 'Só Razão LTDA',
             'cnpj': '12345678000199',
@@ -262,6 +249,20 @@ void main() {
       await pumpModal(tester);
       await goToStep2(tester);
       expect(find.text('Só Razão LTDA'), findsOneWidget);
+      await tapSalvar(tester);
+      expect(
+          find.text('Preencha: Nome completo do responsável, Telefone, E-mail'),
+          findsOneWidget);
+      verifyNever(() => service.saveCompany(any(), any(), any(), any(), any()));
+    });
+
+    testWidgets('recusa e-mail inválido', (tester) async {
+      await pumpModal(tester);
+      await goToStep2(tester);
+      await tester.enterText(campo('E-mail'), 'sem-arroba');
+      await tapSalvar(tester);
+      expect(find.text('E-mail inválido.'), findsOneWidget);
+      verifyNever(() => service.saveCompany(any(), any(), any(), any(), any()));
     });
 
     testWidgets('Voltar retorna ao passo 1', (tester) async {
@@ -274,61 +275,48 @@ void main() {
       expect(find.text('Nova Empresa'), findsOneWidget);
     });
 
-    testWidgets('enviar com campos pendentes lista os que faltam',
-        (tester) async {
-      await pumpModal(tester);
-      await goToStep2(tester);
-      await tester.ensureVisible(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Preencha:'), findsOneWidget);
-      expect(find.textContaining('Procuração'), findsOneWidget);
-      verifyNever(() => service.saveCompany(any(), any(), any(), any(), any()));
-    });
-
-    testWidgets('preenchimento completo salva, envia ao CRM e fecha com true',
+    testWidgets('salva na carteira, leva o responsável ao CRM e fecha com true',
         (tester) async {
       final results = await pumpModal(tester);
       await goToStep2(tester);
-      await fillSelects(tester);
-
-      await tester.ensureVisible(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
+      await tester.enterText(
+          campo('Nome completo do responsável'), ' João da Silva ');
+      await tapSalvar(tester);
 
       verify(() => service.saveCompany('g1', any(), -26.48, -49.07, 'ROOFTOP'))
           .called(1);
-      final form = verify(() =>
-              service.sendToWebhook(any(), captureAny(), 'u@x.com', 'Usuária'))
-          .captured
-          .single as Map<String, dynamic>;
-      expect(form['primeiro_nome'], 'Maria');
-      expect(form['possui_debitos'], 'Sim');
-      expect(form['tipo_lead'], 'Novo lead');
-      expect(form['prioridade'], kPrioridades.keys.first);
-      expect(form['setor_empresa'], kSetores.keys.first);
+      verify(() => crm.addContactToCompany(
+            cnpj: '12345678000199',
+            nome: 'João da Silva',
+            telefone: '47999999999',
+            email: 'a@b.com',
+          )).called(1);
       expect(results, [true]);
     });
 
-    testWidgets('sem permissão do webhook salva na carteira e NÃO envia ao CRM',
+    testWidgets('CRM fora do ar: avisa, não fecha e reenviar funciona',
         (tester) async {
-      when(() => service.webhookEnabledFor(any())).thenReturn(false);
+      var falhar = true;
+      when(() => crm.addContactToCompany(
+            cnpj: any(named: 'cnpj'),
+            nome: any(named: 'nome'),
+            telefone: any(named: 'telefone'),
+            email: any(named: 'email'),
+          )).thenAnswer((_) async {
+        if (falhar) throw 'CRM indisponível';
+      });
       final results = await pumpModal(tester);
       await goToStep2(tester);
-      await fillSelects(tester);
+      await tapSalvar(tester);
 
-      await tester.ensureVisible(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
+      expect(find.textContaining('salva na carteira, mas não chegou ao CRM'),
+          findsOneWidget);
+      expect(results, isEmpty, reason: 'o modal continua aberto');
 
-      verify(() => service.webhookEnabledFor('g1')).called(1);
-      verify(() => service.saveCompany('g1', any(), -26.48, -49.07, 'ROOFTOP'))
-          .called(1);
-      verifyNever(() => service.sendToWebhook(any(), any(), any(), any()));
+      falhar = false;
+      await tapSalvar(tester);
+      verify(() => service.saveCompany(any(), any(), any(), any(), any()))
+          .called(2);
       expect(results, [true]);
     });
 
@@ -348,82 +336,8 @@ void main() {
           .thenThrow('Falha ao salvar');
       await pumpModal(tester);
       await goToStep2(tester);
-      await fillSelects(tester);
-      await tester.ensureVisible(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Salvar e Enviar para CRM'));
-      await tester.pumpAndSettle();
+      await tapSalvar(tester);
       expect(find.text('Falha ao salvar'), findsOneWidget);
-    });
-
-    testWidgets('cancelar o seletor de data e de ação não altera o valor',
-        (tester) async {
-      await pumpModal(tester);
-      await goToStep2(tester);
-
-      final debitos = find.descendant(
-        of: find
-            .ancestor(
-                of: find.text('Possui débitos?'), matching: find.byType(Column))
-            .first,
-        matching: find.byType(GestureDetector),
-      );
-      await tester.ensureVisible(debitos.first);
-      await tester.pumpAndSettle();
-      await tester.tap(debitos.first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancelar'));
-      await tester.pumpAndSettle();
-
-      final data = find.descendant(
-        of: find
-            .ancestor(
-                of: find.text('Data de validade e-CAC'),
-                matching: find.byType(Column))
-            .first,
-        matching: find.byType(GestureDetector),
-      );
-      await tester.ensureVisible(data.first);
-      await tester.pumpAndSettle();
-      await tester.tap(data.first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancelar'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Sim'), findsNothing);
-      expect(find.text('Selecione a data'), findsOneWidget);
-    });
-
-    testWidgets('a busca filtra opções e "Fechar" dispensa a folha',
-        (tester) async {
-      await pumpModal(tester);
-      await goToStep2(tester);
-
-      final regime = find.descendant(
-        of: find
-            .ancestor(
-                of: find.text('Regime tributário'),
-                matching: find.byType(Column))
-            .first,
-        matching: find.byType(GestureDetector),
-      );
-      await tester.ensureVisible(regime.first);
-      await tester.pumpAndSettle();
-      await tester.tap(regime.first);
-      await tester.pumpAndSettle();
-
-      final first = kRegimesTributarios.first;
-      await tester.enterText(find.byType(CupertinoSearchTextField), 'zzzzzz');
-      await tester.pump();
-      expect(find.text(first), findsNothing);
-
-      await tester.enterText(find.byType(CupertinoSearchTextField), '');
-      await tester.pump();
-      expect(find.text(first), findsOneWidget);
-
-      await tester.tap(find.text('Fechar'));
-      await tester.pumpAndSettle();
-      expect(find.text('Fechar'), findsNothing);
     });
   });
 }

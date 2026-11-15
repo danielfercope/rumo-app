@@ -7,6 +7,8 @@ import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
 import 'package:rumo_app/features/groups/services/group_service.dart';
 
+import '../../../helpers/active_group.dart';
+
 class MockGroupService extends Mock implements GroupService {}
 
 UserProfile _profile() => const UserProfile(
@@ -118,5 +120,30 @@ void main() {
     container.read(activeGroupIdProvider.notifier).state = 'g2';
 
     expect(container.read(activeGroupProvider)?.group.id, 'g2');
+  });
+
+  group('canRegisterCompanyProvider: sem CRM conectado ninguém cadastra', () {
+    bool pode({required bool crm, String role = 'admin'}) {
+      final c = ProviderContainer(overrides: [
+        activeGroupOverride(fakeMyGroup(role: role)),
+        crmConnectedOverride(crm),
+      ]);
+      addTearDown(c.dispose);
+      return c.read(canRegisterCompanyProvider);
+    }
+
+    test('admin de organização com CRM cadastra', () {
+      expect(pode(crm: true), isTrue);
+    });
+
+    test('admin de organização SEM CRM não cadastra', () {
+      expect(pode(crm: false), isFalse);
+    });
+  });
+
+  test('activeGroupHasCrmProvider: sem organização ativa é false', () {
+    final c = ProviderContainer(overrides: [noActiveGroupOverride()]);
+    addTearDown(c.dispose);
+    expect(c.read(activeGroupHasCrmProvider).valueOrNull, isFalse);
   });
 }

@@ -68,7 +68,9 @@ void main() {
     expect(find.text('Raio de Destaque no Mapa'), findsOneWidget);
     // segmento saiu: a carteira importada do CRM não tem esse dado
     expect(find.text('Segmento'), findsNothing);
-    expect(find.text('Produto'), findsOneWidget);
+    // produto saiu: não faz mais sentido filtrar por ele, mesmo que o
+    // servidor ainda mande opções
+    expect(find.text('Produto'), findsNothing);
     for (final km in ['5 km', '10 km', '30 km', '100 km']) {
       expect(find.text(km), findsWidgets);
     }
@@ -77,7 +79,6 @@ void main() {
   testWidgets('filtro sem nenhuma opção na carteira não aparece',
       (tester) async {
     repo = FakeCompanyRepository(options: {
-      'products': <String>[],
       'states': ['SC'],
       'cnaes': <String>[],
       'cities': ['Joinville'],
@@ -86,7 +87,6 @@ void main() {
       },
     });
     await pumpModal(tester);
-    expect(find.text('Produto'), findsNothing);
     expect(find.text('CNAE'), findsNothing);
     expect(find.text('Estado (UF)'), findsOneWidget);
   });
@@ -119,7 +119,6 @@ void main() {
       (tester) async {
     await pumpModal(tester);
 
-    await pick(tester, 'Produto', 'P1');
     await pick(tester, 'CNAE', '4712');
 
     await tester.tap(find.text('Cliente'));
@@ -132,7 +131,6 @@ void main() {
     await tester.pumpAndSettle();
 
     final f = container.read(mapFiltersProvider);
-    expect(f.product, 'P1');
     expect(f.cnae, '4712');
     expect(f.type, 'client');
     expect(f.radius, 42);
@@ -164,12 +162,12 @@ void main() {
   testWidgets('o botão de limpar do campo remove o valor selecionado',
       (tester) async {
     await pumpModal(tester);
-    await pick(tester, 'Produto', 'P1');
-    expect(find.text('P1'), findsOneWidget);
+    await pick(tester, 'CNAE', '4712');
+    expect(find.text('4712'), findsOneWidget);
 
     await tester.tap(find.byIcon(CupertinoIcons.clear_circled_solid));
     await tester.pumpAndSettle();
-    expect(find.text('P1'), findsNothing);
+    expect(find.text('4712'), findsNothing);
   });
 
   testWidgets('"Limpar Todos" zera os filtros temporários', (tester) async {
@@ -179,7 +177,7 @@ void main() {
     ]);
     addTearDown(container.dispose);
     container.read(mapFiltersProvider.notifier)
-      ..setProduct('P1')
+      ..setCnae('4712')
       ..setType('lead');
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1;
@@ -190,13 +188,13 @@ void main() {
           const CupertinoApp(home: CupertinoPageScaffold(child: FilterModal())),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('P1'), findsOneWidget);
+    expect(find.text('4712'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Limpar Todos'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Limpar Todos'));
     await tester.pumpAndSettle();
-    expect(find.text('P1'), findsNothing);
+    expect(find.text('4712'), findsNothing);
 
     await tester.tap(find.text('Aplicar'));
     await tester.pumpAndSettle();

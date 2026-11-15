@@ -5,6 +5,7 @@ import 'package:rumo_app/features/groups/models/group_member_model.dart';
 import 'package:rumo_app/features/groups/models/group_model.dart';
 import 'package:rumo_app/features/groups/presentation/group_management_view.dart';
 import 'package:rumo_app/features/groups/providers/group_provider.dart';
+import '../../helpers/active_group.dart';
 
 void main() {
   final group = Group(
@@ -27,6 +28,7 @@ void main() {
   Future<void> pump(WidgetTester tester, {required String role}) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        crmConnectedOverride(),
         myGroupsProvider.overrideWith((ref) async => [
               MyGroup(group: group, role: role, joinedAt: DateTime(2026, 1, 1)),
             ]),

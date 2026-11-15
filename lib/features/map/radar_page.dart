@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:ui' as ui;
@@ -277,12 +278,27 @@ class _RadarPageState extends ConsumerState<RadarPage> {
       return await showCupertinoModalPopup<T>(
         context: context,
         barrierDismissible: barrierDismissible,
-        builder: builder,
+        builder: (context) => _blockMapBehind(builder(context)),
       );
     } finally {
       if (mounted) setState(() => _modalOpen = false);
     }
   }
+
+  /// No Web o mapa do Google é um elemento HTML: a roda do mouse e os toques
+  /// sobre o modal chegavam direto nele (o mapa girava atrás). Uma camada HTML
+  /// na tela toda, por cima do mapa, segura os eventos; o Flutter continua
+  /// recebendo (o modal rola e tocar fora fecha). Nos apps, não faz nada.
+  Widget _blockMapBehind(Widget modal) => Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: PointerInterceptor(child: const SizedBox.expand()),
+            ),
+          ),
+          Align(alignment: Alignment.bottomCenter, child: modal),
+        ],
+      );
 
   void _showFilters() {
     _showModal<void>((context) => const FilterModal());
@@ -561,12 +577,17 @@ class _RadarPageState extends ConsumerState<RadarPage> {
             ],
           ),
 
-        // Legenda dos pinos
-        const Positioned(top: 60, left: 16, child: MapLegend()),
-
-        // Controles: tipo de mapa, filtros, adicionar empresa, contador
+        // Legenda dos pinos: logo abaixo da barra de status (no Web, do topo)
         Positioned(
-          top: 60,
+          top: MediaQuery.paddingOf(context).top + 12,
+          left: 16,
+          child: const MapLegend(),
+        ),
+
+        // Controles: tipo de mapa, filtros, adicionar empresa, contador —
+        // na mesma altura da legenda, logo abaixo da barra de status
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 12,
           right: 16,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -592,7 +613,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                     color: CupertinoColors.activeBlue),
               ),
               const SizedBox(height: 8),
-              if (profile?.canAddCompany == true && position != null)
+              if (ref.watch(canRegisterCompanyProvider) && position != null)
                 CupertinoButton(
                   padding: const EdgeInsets.all(12),
                   color: CupertinoColors.systemYellow.withValues(alpha: 0.95),
@@ -601,7 +622,7 @@ class _RadarPageState extends ConsumerState<RadarPage> {
                   child: const Icon(CupertinoIcons.plus,
                       color: CupertinoColors.black),
                 ),
-              if (profile?.canAddCompany == true && position != null)
+              if (ref.watch(canRegisterCompanyProvider) && position != null)
                 const SizedBox(height: 8),
               GestureDetector(
                 onTap: () => ref

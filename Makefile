@@ -1,9 +1,12 @@
-.PHONY: db-up db-down db-reset psql migrate token data deploy deploy-web deploy-apk
+.PHONY: run db-up db-down db-reset psql migrate token data deploy deploy-web deploy-apk
 
 COMPOSE = docker compose -f docker-compose.backend.yml --env-file infra/.env
 COUNT ?= 40
 # A stack rumo-app-backend roda em us-east-1 (o padrão do CLI pode ser outro).
 AWS_REGION ?= us-east-1
+
+run: ## Sobe o backend local e roda o app com o IP atual: make run [DEVICE=chrome|<id>]
+	@DEVICE="$(DEVICE)" infra/scripts/run_app.sh
 
 db-up: ## Sobe db + postgrest + Backend em background (reconstrói imagens alteradas)
 	$(COMPOSE) up -d --build

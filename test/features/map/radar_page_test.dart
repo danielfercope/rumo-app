@@ -27,6 +27,7 @@ import 'package:rumo_app/features/map/services/tracking_service.dart';
 
 import '../../helpers/fake_google_maps.dart';
 import '../../helpers/fakes.dart';
+import '../../helpers/active_group.dart';
 
 class MockCrmService extends Mock implements CrmService {}
 
@@ -55,7 +56,9 @@ UserProfile _profile({String departamento = 'Pré-vendas'}) => UserProfile(
       nivelAcesso: 'user',
     );
 
-List<MyGroup> _myGroups({required bool trackingEnabled}) => [
+List<MyGroup> _myGroups(
+        {required bool trackingEnabled, String role = 'member'}) =>
+    [
       MyGroup(
         group: Group(
           id: 'g1',
@@ -64,7 +67,7 @@ List<MyGroup> _myGroups({required bool trackingEnabled}) => [
           createdBy: 'u1',
           createdAt: DateTime(2026),
         ),
-        role: 'member',
+        role: role,
         joinedAt: DateTime(2026),
       ),
     ];
@@ -92,7 +95,6 @@ void main() {
       ],
       options: {
         'segments': <String>[],
-        'products': <String>[],
         'states': <String>[],
         'cnaes': <String>[],
         'cities': <String>[],
@@ -114,6 +116,7 @@ void main() {
     UserProfile? profile,
     bool shouldTrack = false,
     bool useGoogle = true,
+    String role = 'member',
   }) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1;
@@ -128,8 +131,10 @@ void main() {
       // transição real de loading -> data pra que o ref.listen de
       // shouldTrackProvider em radar_page.dart dispare (listen não roda
       // pro valor inicial, só pras mudanças subsequentes).
+      crmConnectedOverride(),
       myGroupsProvider.overrideWith((ref) async => _myGroups(
             trackingEnabled: shouldTrack,
+            role: role,
           )),
       crmServiceProvider.overrideWithValue(crm),
       trackingServiceProvider.overrideWithValue(tracking),
@@ -432,6 +437,15 @@ void main() {
       await pumpRadar(tester, profile: _profile(departamento: 'Vendas'));
       await tester.pump();
       expect(find.byIcon(CupertinoIcons.plus), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('admin da organização cadastra mesmo sem o departamento',
+        (tester) async {
+      await pumpRadar(tester,
+          profile: _profile(departamento: 'Não definido'), role: 'admin');
+      await tester.pump();
+      expect(find.byIcon(CupertinoIcons.plus), findsOneWidget);
       await finish(tester);
     });
 

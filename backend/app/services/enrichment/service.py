@@ -86,6 +86,7 @@ class EnrichmentService:
         if fonte not in FONTES:
             raise ValueError(f"Fonte desconhecida: {fonte}")
         await self._access.require_member(uid, group_id)
+        await self._access.require_crm(group_id)
         await self._access.require_cnpj_in_portfolio(group_id, cnpj)
         cnpj = digits(cnpj)
 

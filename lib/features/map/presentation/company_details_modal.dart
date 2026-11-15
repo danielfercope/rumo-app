@@ -6,6 +6,7 @@ import '../models/company_model.dart';
 import '../../company/crm_service.dart';
 import '../../enrichment/models/enrichment_models.dart';
 import '../../enrichment/presentation/enrichment_cards.dart';
+import '../../enrichment/presentation/google_profile.dart';
 import '../../enrichment/providers/enrichment_provider.dart';
 import '../../groups/providers/group_provider.dart';
 import 'priority_explanation_section.dart';
@@ -41,38 +42,44 @@ class CompanyDetailsModal extends ConsumerWidget {
     final notesAsync = ref.watch(crmNotesProvider(company.cnpj ?? ''));
     final contactsAsync = ref.watch(crmContactsProvider(company.cnpj ?? ''));
 
-    // A Receita completa os contatos quando a empresa não os tem no cadastro.
-    // O Google não: cada consulta é cobrada e só acontece quando a pessoa pede,
-    // no bloco "No Google".
     final groupId = ref.watch(activeGroupProvider)?.group.id;
     final cnpj = (company.cnpj ?? '').replaceAll(RegExp(r'\D'), '');
     final canEnrich = groupId != null && cnpj.length == 14;
-    final receitaResult = canEnrich
+    EnrichmentResult? source(EnrichmentSource fonte) => canEnrich
         ? ref
-            .watch(enrichmentProvider((
-              groupId: groupId,
-              cnpj: cnpj,
-              fonte: EnrichmentSource.receita,
-            )))
+            .watch(enrichmentProvider(
+                (groupId: groupId, cnpj: cnpj, fonte: fonte)))
             .valueOrNull
         : null;
+
+    // O Google é consultado ao abrir: dá a capa e é a fonte preferida de
+    // telefone, endereço, site e horário. Sem ele, ficam os do cadastro e,
+    // por último, os da Receita.
+    final googleAsync = canEnrich
+        ? ref.watch(enrichmentProvider(
+            (groupId: groupId, cnpj: cnpj, fonte: EnrichmentSource.google)))
+        : null;
+    final googleResult = googleAsync?.valueOrNull;
+    final google = googleResult?.hasData == true
+        ? GooglePlaceData.fromJson(googleResult!.dados!)
+        : null;
+    final receitaResult = source(EnrichmentSource.receita);
     final receita = receitaResult?.hasData == true
         ? ReceitaData.fromJson(receitaResult!.dados!)
         : null;
+
     final telefone = _firstFilled([
+      google?.telefone,
       company.telefone,
       if (receita != null && receita.telefones.isNotEmpty)
         receita.telefones.first,
     ]);
     final email = _firstFilled([company.email, receita?.email]);
-    final endereco = _firstFilled([company.address, receita?.endereco]);
-    final contactTiles = [
-      if (telefone != null)
-        _tile(context, 'Telefone', telefone, CupertinoIcons.phone),
-      if (email != null) _tile(context, 'Email', email, CupertinoIcons.mail),
-      if (endereco != null)
-        _tile(context, 'Endereço', endereco, CupertinoIcons.location),
-    ];
+    final endereco =
+        _firstFilled([google?.endereco, company.address, receita?.endereco]);
+    final site = _firstFilled([google?.site]);
+    final hoje = google == null ? null : todayHours(google.horarios);
+
     final creditTiles = [
       if (_filled(company.saudeTributaria))
         _tile(context, 'Saúde Tributária', company.saudeTributaria,
@@ -96,47 +103,85 @@ class CompanyDetailsModal extends ConsumerWidget {
                   CupertinoIcons.briefcase),
           ];
 
+    final hasRoute = company.latitude != null && company.longitude != null;
+    final distance = company.distance == null
+        ? null
+        : '${company.distance!.toStringAsFixed(2)} km de você';
+    final infoRows = [
+      if (telefone != null)
+        _InfoRow(
+          icon: CupertinoIcons.phone_fill,
+          label: 'Telefone',
+          value: telefone,
+          onTap: () => _launch(
+              'tel:${telefone.replaceAll(RegExp(r'[^0-9+]'), '')}'),
+          onCopy: () => _copyToClipboard(context, telefone),
+        ),
+      if (endereco != null || distance != null)
+        _InfoRow(
+          icon: CupertinoIcons.location_solid,
+          label: 'Endereço',
+          value: endereco ?? 'Endereço não informado',
+          detail: distance,
+          detailAction: hasRoute
+              ? _RouteButton(
+                  onTap: () =>
+                      _openRoute(company.latitude!, company.longitude!))
+              : null,
+          onTap: hasRoute
+              ? () => _openRoute(company.latitude!, company.longitude!)
+              : null,
+          onCopy: endereco == null
+              ? null
+              : () => _copyToClipboard(context, endereco),
+        ),
+      if (hoje != null)
+        _HoursRow(today: hoje, horarios: google!.horarios),
+      if (email != null)
+        _InfoRow(
+          icon: CupertinoIcons.mail_solid,
+          label: 'E-mail',
+          value: email,
+          onTap: () => _launch('mailto:$email'),
+          onCopy: () => _copyToClipboard(context, email),
+        ),
+    ];
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,
+      clipBehavior: Clip.antiAlias,
       decoration: const BoxDecoration(
         color: CupertinoColors.systemBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: [
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            width: 40,
-            height: 5,
-            decoration: BoxDecoration(
-              color: CupertinoColors.systemGrey4,
-              borderRadius: BorderRadius.circular(10),
-            ),
+          GoogleCover(
+            place: google,
+            loading: googleAsync?.isLoading ?? false,
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 GestureDetector(
                   onTap: () => _copyToClipboard(context, company.displayName),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(company.displayName,
-                            style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: CupertinoColors.black)),
-                      ),
-                      const Icon(CupertinoIcons.doc_on_doc,
-                          size: 18, color: CupertinoColors.systemGrey),
-                    ],
-                  ),
+                  child: Text(company.displayName,
+                      style: const TextStyle(
+                          fontSize: 24,
+                          height: 1.15,
+                          fontWeight: FontWeight.w800,
+                          color: CupertinoColors.black)),
                 ),
                 if (company.name != null && company.name != company.displayName)
-                  Text(company.name!,
-                      style: const TextStyle(
-                          fontSize: 14, color: CupertinoColors.systemGrey)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(company.name!,
+                        style: const TextStyle(
+                            fontSize: 14, color: CupertinoColors.systemGrey)),
+                  ),
                 if (company.cnpj != null && company.cnpj!.isNotEmpty)
                   Text(
                     formatCnpj(company.cnpj!),
@@ -145,67 +190,53 @@ class CompanyDetailsModal extends ConsumerWidget {
                         color: CupertinoColors.systemGrey,
                         letterSpacing: 0.3),
                   ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${company.distance?.toStringAsFixed(2)} km de você',
-                      style: const TextStyle(
-                          fontSize: 16,
-                          color: CupertinoColors.activeBlue,
-                          fontWeight: FontWeight.w600),
-                    ),
-                    if (company.latitude != null && company.longitude != null)
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        color: CupertinoColors.activeBlue,
-                        borderRadius: BorderRadius.circular(20),
-                        minimumSize: Size.zero,
-                        onPressed: () =>
-                            _openRoute(company.latitude!, company.longitude!),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(CupertinoIcons.location_fill,
-                                size: 14, color: CupertinoColors.white),
-                            SizedBox(width: 4),
-                            Text('Traçar Rota',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: CupertinoColors.white,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+                if (google != null) GoogleRatingLine(google),
                 const SizedBox(height: 16),
-                if (contactTiles.isNotEmpty)
-                  _buildSection(context, 'Contatos e Endereço', contactTiles),
+                _buildActionButtons(context),
+                if (site != null) ...[
+                  const SizedBox(height: 10),
+                  _SiteLink(url: site),
+                ],
+                if (infoRows.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _InfoGroup(rows: infoRows),
+                  if (google != null)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6, left: 4),
+                      child: Text(
+                          'Telefone, endereço e horário do Google · confira se é a mesma empresa',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: CupertinoColors.systemGrey)),
+                    ),
+                ],
+                const SizedBox(height: 16),
                 if (_buildHighlights() case final Widget highlights) ...[
                   highlights,
                   const SizedBox(height: 16),
                 ],
-                _buildActionButtons(context),
-                const SizedBox(height: 16),
                 PriorityExplanationSection(company: company),
+                _buildCrmContacts(contactsAsync),
+                _buildActivities(context, notesAsync),
+                const SizedBox(height: 8),
                 if (canEnrich)
                   CompanyEnrichmentCards(groupId: groupId, cnpj: cnpj),
-                _buildCrmContacts(contactsAsync),
                 if (company.isClient != true && creditTiles.isNotEmpty)
                   _buildSection(
                       context, 'Dados de Crédito e Dívida', creditTiles),
                 if (infoTiles.isNotEmpty)
                   _buildSection(context, 'Informações', infoTiles),
-                _buildActivities(context, notesAsync),
-                const SizedBox(height: 20),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _launch(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _openRoute(double lat, double lng) async {
@@ -581,28 +612,267 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      color: CupertinoColors.activeBlue,
+      borderRadius: BorderRadius.circular(12),
+      minimumSize: Size.zero,
+      onPressed: onTap,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18, color: CupertinoColors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 15,
+              color: CupertinoColors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Linhas de contato (estilo lista do iOS) ─────────────────────────────────
+
+class _InfoGroup extends StatelessWidget {
+  const _InfoGroup({required this.rows});
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemGroupedBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              Container(
+                margin: const EdgeInsets.only(left: 48),
+                height: 0.5,
+                color: CupertinoColors.systemGrey4,
+              ),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.detail,
+    this.onTap,
+    this.onCopy,
+    this.detailAction,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final String? detail;
+  final VoidCallback? onTap;
+  final VoidCallback? onCopy;
+  /// Ação ao lado do [detail] (ex.: "Traçar Rota" junto da distância).
+  final Widget? detailAction;
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: CupertinoColors.activeBlue.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: CupertinoColors.activeBlue.withValues(alpha: 0.3)),
-        ),
-        child: Column(
+      onLongPress: onCopy,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+        child: Row(
           children: [
-            Icon(icon, size: 20, color: CupertinoColors.activeBlue),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.activeBlue,
-                fontWeight: FontWeight.w500,
+            Icon(icon, size: 18, color: CupertinoColors.activeBlue),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 11, color: CupertinoColors.systemGrey)),
+                  const SizedBox(height: 1),
+                  Text(value,
+                      style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.25,
+                          color: CupertinoColors.black)),
+                  if (detail != null || detailAction != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(children: [
+                        if (detail != null)
+                          Expanded(
+                            child: Text(detail!,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: CupertinoColors.activeBlue)),
+                          )
+                        else
+                          const Spacer(),
+                        if (detailAction != null) detailAction!,
+                      ]),
+                    ),
+                ],
               ),
             ),
+            if (onCopy != null)
+              CupertinoButton(
+                padding: const EdgeInsets.all(6),
+                minimumSize: Size.zero,
+                onPressed: onCopy,
+                child: const Icon(CupertinoIcons.doc_on_doc,
+                    size: 16, color: CupertinoColors.systemGrey),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteButton extends StatelessWidget {
+  const _RouteButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => CupertinoButton(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: CupertinoColors.activeBlue.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        minimumSize: Size.zero,
+        onPressed: onTap,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(CupertinoIcons.location_fill,
+                size: 13, color: CupertinoColors.activeBlue),
+            SizedBox(width: 4),
+            Text('Traçar Rota',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: CupertinoColors.activeBlue,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+}
+
+/// Horário de hoje; tocar mostra a semana.
+class _HoursRow extends StatefulWidget {
+  const _HoursRow({required this.today, required this.horarios});
+  final String today;
+  final List<String> horarios;
+
+  @override
+  State<_HoursRow> createState() => _HoursRowState();
+}
+
+class _HoursRowState extends State<_HoursRow> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _open = !_open),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(CupertinoIcons.clock_fill,
+                size: 18, color: CupertinoColors.activeBlue),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Horário',
+                      style: TextStyle(
+                          fontSize: 11, color: CupertinoColors.systemGrey)),
+                  const SizedBox(height: 1),
+                  Text(widget.today,
+                      style: const TextStyle(
+                          fontSize: 15, color: CupertinoColors.black)),
+                  if (_open)
+                    for (final h in widget.horarios)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                            h.isEmpty ? h : h[0].toUpperCase() + h.substring(1),
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: CupertinoColors.systemGrey)),
+                      ),
+                ],
+              ),
+            ),
+            Icon(
+                _open
+                    ? CupertinoIcons.chevron_up
+                    : CupertinoIcons.chevron_down,
+                size: 14,
+                color: CupertinoColors.systemGrey),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Site da empresa, logo abaixo das ações.
+class _SiteLink extends StatelessWidget {
+  const _SiteLink({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: const ValueKey('site-empresa'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        final uri = Uri.tryParse(url);
+        if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: CupertinoColors.systemGrey4),
+        ),
+        child: Row(
+          children: [
+            const Icon(CupertinoIcons.globe,
+                size: 18, color: CupertinoColors.activeBlue),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(displaySite(url),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: CupertinoColors.activeBlue)),
+            ),
+            const Icon(CupertinoIcons.arrow_up_right,
+                size: 14, color: CupertinoColors.activeBlue),
           ],
         ),
       ),

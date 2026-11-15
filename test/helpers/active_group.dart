@@ -22,3 +22,7 @@ Override activeGroupOverride([MyGroup? group]) =>
 
 /// Override de quem ainda não pertence a nenhuma organização.
 Override noActiveGroupOverride() => activeGroupProvider.overrideWithValue(null);
+
+/// Override do CRM da organização ativa: sem CRM conectado ela não usa o app.
+Override crmConnectedOverride([bool connected = true]) =>
+    activeGroupHasCrmProvider.overrideWithValue(AsyncData(connected));

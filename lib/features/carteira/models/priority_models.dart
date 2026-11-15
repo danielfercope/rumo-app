@@ -108,12 +108,13 @@ class PriorityFactor {
   /// Média ponderada do log da razão de chances: > 0 ajuda, < 0 atrapalha.
   final double contribuicao;
 
-  /// Fração (0–1) dos clientes com este valor e da base inteira com ele.
+  /// Fração (0–1) dos clientes com este valor e da carteira inteira da
+  /// organização com ele (nunca de outras organizações).
   final double pctClientes;
   final double pctBase;
   final int clientesComValor;
 
-  /// Quantas vezes o valor é mais comum entre os clientes que na base (nulo se
+  /// Quantas vezes o valor é mais comum entre os clientes que na carteira (nulo se
   /// a base não tem nenhuma empresa com ele).
   final double? vezes;
 
