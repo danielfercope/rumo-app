@@ -3,7 +3,7 @@
 Mesma pergunta do baseline (`priority_score`) — "quão parecida com os
 clientes é esta empresa?" — e mesma interface (`fit`/`score`), mas aqui os
 pesos de cada característica são APRENDIDOS: uma regressão logística de
-"cliente" contra "base inteira" (positivo-não-rotulado: o rótulo 0 é "não sei
+"cliente" contra "carteira inteira da organização" (positivo-não-rotulado: o rótulo 0 é "não sei
 se é cliente", e como a probabilidade de ser rotulado é proporcional à de ser
 cliente, o ranking continua válido).
 
@@ -64,7 +64,7 @@ class LogisticModel:
     bias: float
     weights: dict[tuple[str, str], float]
     n_clients: int
-    # Só pra explicação ("X% dos seus clientes, Y% da base").
+    # Só pra explicação ("X% dos seus clientes, Y% da sua carteira").
     clients_counts: dict[str, Counter]
     base_counts: dict[str, Counter]
     n_clients_by_feature: dict[str, int]
@@ -202,8 +202,9 @@ def fit(
     max_negatives: int = DEFAULT_MAX_NEGATIVES,
     seed: int = 0,
 ) -> LogisticModel:
-    """Ajusta "cliente × base". `universe` é a base inteira (clientes
-    incluídos, como no baseline)."""
+    """Ajusta "cliente × carteira". `universe` é a carteira inteira da
+    organização (clientes incluídos, como no baseline) — nunca empresas de
+    outras organizações."""
     features = tuple(features)
     rng = random.Random(seed)
     negatives = list(universe)

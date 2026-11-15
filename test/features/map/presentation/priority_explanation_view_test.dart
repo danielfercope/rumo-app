@@ -99,7 +99,7 @@ void main() {
         find.textContaining('probabilidade de fechar negócio'), findsOneWidget);
   });
 
-  testWidgets('fatores: a favor, contra, números dos clientes e da base',
+  testWidgets('fatores: a favor, contra, números dos clientes e da carteira',
       (tester) async {
     await pump(
         tester,

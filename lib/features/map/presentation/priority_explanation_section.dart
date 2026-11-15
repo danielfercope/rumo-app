@@ -335,7 +335,7 @@ class _PriorityExplanationViewState extends State<PriorityExplanationView> {
       title: 'O que pesa na nota',
       icon: CupertinoIcons.slider_horizontal_3,
       subtitle: 'Cada característica da empresa é comparada com a dos seus '
-          '${e.nClientes} clientes e com a base inteira.',
+          '${e.nClientes} clientes e com a sua carteira inteira.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -692,7 +692,7 @@ class _FactorRow extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         _ShareBar(
-          label: 'Base inteira',
+          label: 'Sua carteira',
           share: f.pctBase,
           color: _muted,
           trailing: _pct(f.pctBase),
