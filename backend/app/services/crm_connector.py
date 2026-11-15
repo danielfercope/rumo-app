@@ -14,6 +14,7 @@ from typing import Protocol
 import httpx
 
 from ..errors import InvalidCrmTokenError, UpstreamIntegrationError
+from .hubspot_http import HubSpotHttp
 
 HUBSPOT_BASE_URL = "https://api.hubapi.com"
 
@@ -126,6 +127,7 @@ class HubSpotConnector:
     token: str
     client: httpx.AsyncClient | None = None
     _owns_client: bool = field(init=False, default=False)
+    _http: HubSpotHttp = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.client is None:
@@ -135,6 +137,7 @@ class HubSpotConnector:
                 headers={"Authorization": f"Bearer {self.token}"},
             )
             self._owns_client = True
+        self._http = HubSpotHttp(self.client)
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -239,7 +242,7 @@ class HubSpotConnector:
 
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         try:
-            response = await self.client.request(method, path, **kwargs)
+            response = await self._http.send(method, path, **kwargs)
         except httpx.RequestError as exc:
             raise UpstreamIntegrationError(
                 f"Falha de rede ao chamar o CRM ({method} {path}): {exc}"
