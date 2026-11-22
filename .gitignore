@@ -58,3 +58,6 @@ ios/Flutter/Secrets.xcconfig
 
 # Chave do Google Maps pro Flutter Web (ver web/env.js.example)
 web/env.js
+
+# Ambiente virtual do backend (pytest local)
+backend/.venv/

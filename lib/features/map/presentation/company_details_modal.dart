@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/company_model.dart';
 import '../../company/crm_service.dart';
+import '../../diagnosis/presentation/tax_opportunity_card.dart';
 import '../../enrichment/models/enrichment_models.dart';
 import '../../enrichment/presentation/enrichment_cards.dart';
 import '../../enrichment/presentation/google_profile.dart';
@@ -213,6 +214,7 @@ class CompanyDetailsModal extends ConsumerWidget {
                   highlights,
                   const SizedBox(height: 16),
                 ],
+                if (canEnrich) TaxOpportunityCard(groupId: groupId, cnpj: cnpj),
                 PriorityExplanationSection(company: company),
                 _buildCrmContacts(contactsAsync),
                 _buildActivities(context, notesAsync),

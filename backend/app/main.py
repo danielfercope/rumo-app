@@ -43,6 +43,8 @@ from .services.enrichment.service import FONTES as ENRICHMENT_SOURCES
 from .services.enrichment.service import EnrichmentService
 from .services.postgrest_client import PostgrestClient
 from .services.priority_service import PriorityService
+from .services.tax_diagnosis.catalog import CatalogRepository
+from .services.tax_diagnosis.service import TaxDiagnosisService
 from .services.token_cipher import TokenCipher
 
 logger = logging.getLogger("uvicorn.error.crm_sync")
@@ -59,6 +61,9 @@ enrichment_service = EnrichmentService(
     access_service,
     google_api_key=settings.geocoding_api_key,
     google_enabled=settings.enrichment_google_places_enabled,
+)
+tax_diagnosis_service = TaxDiagnosisService(
+    access_service, enrichment_service, CatalogRepository(postgrest_client)
 )
 crm_sync_service = CrmSyncService(
     crm_service, company_lookup_service, geocoding_service, postgrest_client
@@ -228,6 +233,21 @@ async def enriquecimento(
         raise HTTPException(404, f"Fonte desconhecida: {fonte}")
     try:
         return await enrichment_service.get(uid, group_id, cnpj, fonte)
+    except (NotGroupMemberError, CrmNotAvailableError) as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except CompanyNotInPortfolioError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/diagnostico/tributario")
+async def diagnostico_tributario(
+    group_id: str, cnpj: str, uid: str = Depends(current_uid)
+) -> dict:
+    """Provável oportunidade de recuperação tributária de uma empresa da
+    carteira: tese principal, outras possibilidades e as evidências, a partir
+    dos dados públicos (Receita e compras públicas). Hipótese, não parecer."""
+    try:
+        return await tax_diagnosis_service.get(uid, group_id, cnpj)
     except (NotGroupMemberError, CrmNotAvailableError) as exc:
         raise HTTPException(403, str(exc)) from exc
     except CompanyNotInPortfolioError as exc:

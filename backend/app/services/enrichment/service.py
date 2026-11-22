@@ -88,8 +88,14 @@ class EnrichmentService:
         await self._access.require_member(uid, group_id)
         await self._access.require_crm(group_id)
         await self._access.require_cnpj_in_portfolio(group_id, cnpj)
-        cnpj = digits(cnpj)
+        return await self.fetch_cached(fonte, digits(cnpj))
 
+    async def fetch_cached(self, fonte: str, cnpj: str) -> dict:
+        """A fonte de um CNPJ (com cache), SEM conferir acesso: só pra quem já
+        conferiu, como o diagnóstico tributário (que lê várias fontes)."""
+        if fonte not in FONTES:
+            raise ValueError(f"Fonte desconhecida: {fonte}")
+        cnpj = digits(cnpj)
         if fonte == "receita":
             return await self._receita(cnpj)
         if fonte == "compras":
