@@ -19,6 +19,18 @@ class CompanyLookupRequest(BaseModel):
     cnpj: str
 
 
+class ClientErrorReport(BaseModel):
+    """Erro do app (Flutter Web) que não vai pro Crashlytics. Rota aceita
+    chamada sem login: todo campo tem tamanho máximo."""
+
+    message: str = Field(min_length=1, max_length=2000)
+    stack: str | None = Field(default=None, max_length=8000)
+    fatal: bool = False
+    platform: str = Field(default="web", max_length=20)
+    app_version: str | None = Field(default=None, max_length=40)
+    url: str | None = Field(default=None, max_length=500)
+
+
 class StatusMapeamento(BaseModel):
     """Valores da propriedade de estágio que significam cliente/perdido (todo o
     resto é lead)."""

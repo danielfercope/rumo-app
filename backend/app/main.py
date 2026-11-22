@@ -24,6 +24,7 @@ from .errors import (
 )
 from .config import settings
 from .schemas import (
+    ClientErrorReport,
     CompanyLookupRequest,
     ConectarCrmRequest,
     CredencialCrm,
@@ -32,6 +33,7 @@ from .schemas import (
 )
 from .services.access_service import AccessService
 from .services.auth_service import AuthService
+from .services.client_error_service import ClientErrorService
 from .services.company_lookup_service import CompanyLookupService
 from .services.carteira_connection_service import CarteiraConnectionService
 from .services.carteira_sync_service import CarteiraSyncService
@@ -50,6 +52,7 @@ from .services.token_cipher import TokenCipher
 logger = logging.getLogger("uvicorn.error.crm_sync")
 
 auth_service = AuthService()
+client_error_service = ClientErrorService()
 company_lookup_service = CompanyLookupService()
 crm_service = CrmService()
 geocoding_service = GeocodingService()
@@ -181,6 +184,32 @@ def exchange_token(authorization: str = Header(...)) -> dict:
         return auth_service.exchange_token(authorization)
     except UnauthenticatedError as exc:
         raise HTTPException(401, str(exc)) from exc
+
+
+@app.post("/client-errors", status_code=204)
+def client_errors(
+    report: ClientErrorReport,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> None:
+    """Erro do app sem Crashlytics (Flutter Web) → uma linha no log do Backend
+    (CloudWatch em produção). Login é opcional: o erro pode vir da tela de
+    login. Token inválido não é erro, só deixa o relato anônimo."""
+    uid: str | None = None
+    if authorization:
+        try:
+            uid = auth_service.uid_from_internal_token(authorization)
+        except UnauthenticatedError:
+            uid = None
+    # Atrás do Caddy o IP do cliente vem em X-Forwarded-For (o Caddy é a única
+    # entrada; as portas do Backend não são publicadas em produção).
+    forwarded = request.headers.get("x-forwarded-for", "")
+    ip = forwarded.split(",")[0].strip() or (
+        request.client.host if request.client else "?"
+    )
+    if not client_error_service.allow(f"uid:{uid}" if uid else f"ip:{ip}"):
+        raise HTTPException(429, "Muitos relatos de erro; tente mais tarde.")
+    client_error_service.record(report.model_dump(), uid)
 
 
 @app.post("/company-lookup")

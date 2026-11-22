@@ -190,6 +190,28 @@ class ApiClient {
     final streamed = await _httpClient.send(request);
     return _decode(await http.Response.fromStream(streamed));
   }
+
+  /// Manda um erro do app pra `POST /backend/client-errors` (vai pro log do
+  /// Backend/CloudWatch). Usado onde não há Crashlytics (Web). Login é
+  /// opcional — o erro pode acontecer antes dele — e **nunca lança**: quem
+  /// chama está dentro de um handler de erro.
+  Future<void> reportClientError(Map<String, dynamic> report) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      try {
+        headers['Authorization'] = 'Bearer ${await _accessToken()}';
+      } catch (_) {
+        // sem login (ou troca de token falhou): relato anônimo
+      }
+      await _httpClient.post(
+        Uri.parse('$baseUrl/backend/client-errors'),
+        headers: headers,
+        body: json.encode(report),
+      );
+    } catch (_) {
+      // sem rede/backend: não há onde relatar, e não pode gerar outro erro
+    }
+  }
 }
 
 final apiClientProvider = Provider<ApiClient>((ref) {

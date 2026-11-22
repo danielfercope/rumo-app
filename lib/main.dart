@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/services/analytics_service.dart';
+import 'core/services/api_client.dart';
+import 'core/services/client_error_reporter.dart';
 import 'firebase_options.dart';
 import 'features/auth/login_page.dart';
 import 'features/auth/profile_page.dart';
@@ -23,21 +25,43 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  if (!kIsWeb) {
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
+  final container = ProviderContainer();
+
+  // Android/iOS: Crashlytics. Web (sem Crashlytics): o erro vai pro log do
+  // Backend (/backend/client-errors → CloudWatch em produção).
+  final void Function(Object, StackTrace?, {bool fatal}) recordError;
+  if (kIsWeb) {
+    final reporter = ClientErrorReporter(
+      container.read(apiClientProvider),
+      // só o caminho: query/fragmento podem carregar dado que não deve ir pro log
+      currentUrl: () => Uri.base.path,
+    );
+    recordError = (error, stack, {fatal = false}) {
+      // erro de zona/plataforma não passa pelo presentError: mantém no console
+      if (fatal) debugPrint('$error\n$stack');
+      reporter.report(error, stack, fatal: fatal);
     };
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details); // continua no console do navegador
+      recordError(details.exception, details.stack, fatal: false);
+    };
+  } else {
+    recordError = (error, stack, {fatal = false}) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: fatal);
+    };
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
   }
+  PlatformDispatcher.instance.onError = (error, stack) {
+    recordError(error, stack, fatal: true);
+    return true;
+  };
 
   runZonedGuarded(
-    () => runApp(const ProviderScope(child: RumoApp())),
-    (error, stack) {
-      if (!kIsWeb) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      }
-    },
+    () => runApp(UncontrolledProviderScope(
+      container: container,
+      child: const RumoApp(),
+    )),
+    (error, stack) => recordError(error, stack, fatal: true),
   );
 }
 
