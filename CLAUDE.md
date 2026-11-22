@@ -96,6 +96,13 @@ lib/
     │   └── presentation/enrichment_cards.dart # Receita, governo e economia — DetailCard: resumo sempre visível, detalhes ao tocar
     │   └── presentation/google_profile.dart # topo dos detalhes no estilo perfil: capa (foto do Google), nota/situação, horário de hoje
     │
+    ├── diagnosis/                     # "Oportunidade tributária" nos detalhes: onde a empresa provavelmente
+    │   │                              # pagou imposto a mais (recuperação tributária). Regras no Backend
+    │   ├── models/tax_diagnosis.dart  # TaxDiagnosis/TaxFinding/Evidence (GET /diagnostico/tributario)
+    │   ├── services/diagnosis_service.dart
+    │   ├── providers/diagnosis_provider.dart # taxDiagnosisProvider.family((groupId, cnpj))
+    │   └── presentation/tax_opportunity_card.dart # tese principal, confiança, período, evidências; ao tocar: como abordar, perguntas, outras
+    │
     ├── leads/                         # Busca textual de leads + visão "Prioridades" (segmento no topo)
     │   ├── leads_page.dart
     │   └── leads_search_provider.dart # leadsSearchQueryProvider + leadsResultsProvider
@@ -241,6 +248,7 @@ Self-hospedado — PostgreSQL + PostGIS, exposto via PostgREST (`db/schema/*.sql
 | `crm_conexoes` | Conexão da organização com o CRM: token cifrado (nunca legível por `web_user`) + mapeamento de campos |
 | `sincronizacoes` | Log de cada carga/sincronização do CRM, pra tela de status (o incremental só deixa log se houve novidade ou erro). A carga inicial grava o progresso a cada 5 empresas (`total_estimado`, `total_processadas`; `017_progresso_sincronizacao.sql`, **a aplicar à mão em produção**, junto da limpeza de `nome_fantasia = ''`) |
 | `enriquecimento_cache` | Cache das fontes públicas dos detalhes (`018_enriquecimento_cache.sql`): `(fonte, chave)` → `dados` jsonb. Chave = CNPJ (Receita, compras, Google) ou código IBGE do município (comex, IBGE, compartilhado pela cidade). Só `crm_sync` acessa. **Em produção a `018` precisa ser aplicada à mão** |
+| `teses_tributarias` (+ `_perguntas`, `_cnaes`) | Catálogo do diagnóstico tributário (`020_teses_tributarias.sql`): conteúdo de cada tese (textos, base legal, `em_discussao`, `ativa`), perguntas da visita em ordem e CNAEs que a disparam (`parcial`). As condições ficam em `rules.py`, ligadas pelo `id`. Só `crm_sync` lê. **Em produção a `020` precisa ser aplicada à mão** |
 | `carteira_pendencias` | Fila de retentativas (com backoff) da sincronização por conexão — análoga à `crm_sync_pending`, mas com a conexão na chave (`011_carteira_pendencias.sql`) |
 
 ### RPCs (Stored Procedures)
@@ -322,6 +330,8 @@ O token só chega ao banco no `PUT`, cifrado; validar e prévia não gravam nada
 - `comex` — Comex Stat (MDIC): exportação/importação do **município** no último ano fechado (produtos SH4 e países). Não há comércio exterior por CNPJ em API pública. Cache de 30 dias.
 - `municipio` — IBGE: população, PIB e PIB per capita. Cache de 30 dias.
 - `google` — Google Places (API New) com a `GEOCODING_API_KEY` (precisa da Places API ativada): foto de capa (com crédito do autor), nota, avaliações, telefone, site, horários. **Consultado ao abrir os detalhes e cobrado por consulta** (cada abertura = uma consulta): alimenta o topo da tela (capa, nota, site) e é a fonte preferida de telefone, endereço e horário (depois cadastro, depois Receita). **Termos do Google Maps: só o `place_id` fica guardado** (`enriquecimento_cache`, fonte `google_place_id`, 12 meses); nota, horários e foto são buscados a cada pedido (Place Details pelo id; busca por texto só na 1ª vez ou se o id deixar de existir). "Não encontrado" fica 7 dias, pra não repetir busca paga. A foto vem como link temporário do googleusercontent (sem a chave). `ENRICHMENT_GOOGLE_PLACES_ENABLED=false` desliga. "Aberto agora" é calculado no horário de Brasília.
+
+**Diagnóstico tributário** (`backend/app/services/tax_diagnosis/`, rota `GET /diagnostico/tributario?group_id=&cnpj=`): aponta a provável oportunidade de **recuperação tributária** de uma empresa da carteira, com a tese principal, as outras possibilidades, a confiança, o período (janela de 5 anos) e as evidências. Mesmo acesso do enriquecimento (`AccessService`, conferido uma vez). Lê `receita` e `compras` via `EnrichmentService.fetch_cached` (cache, sem conferir acesso de novo) e o **catálogo de teses do banco** (`teses_tributarias*`, migração 020) via `CatalogRepository` (`catalog.py`, em memória por 5 min, última cópia se o banco cair; só `ativa = true`); não grava nada. **Conteúdo (textos, perguntas, CNAEs) só no banco, nunca no código**; `rules.py` tem só as condições, uma por `id` de tese (`REGRAS`) — tese nova = linha no banco + condição em `rules.py`. `signals.py` é puro (dados → sinais). Pontuação = confiança + anos na janela + reforço por mudança de regime; `em_discussao` só é a principal sem outra. `versao` = maior `atualizado_em` das três tabelas. Teses: monofásico no Simples, ICMS-ST no DAS, ICMS na base do PIS/COFINS (Tema 69), insumos no Lucro Real, retenções em vendas ao governo, ISS na base (Tema 118), verbas indenizatórias. Bloqueios: não ativa, MEI; imune/isenta perde as de PIS/COFINS/IRPJ. Sem PGFN (importação custosa demais) e sem LLM nesta versão.
 
 Migração nova com tabela/coluna? Termine com `NOTIFY pgrst, 'reload schema';` — senão o PostgREST não enxerga a mudança até reiniciar.
 

@@ -35,6 +35,7 @@ O **Rumo** é uma aplicação (Web, Android e iOS) de inteligência comercial. E
 | **Perfil** (aba 3) | Política de privacidade e logout ("Sair da conta"). |
 | **Equipe** (aba 4) | Grupos (organizações): criar um grupo ou entrar por convite, gerenciar membros e papéis, ligar o rastreamento e abrir o **Mapa da Equipe**. |
 | **Detalhes da empresa** | Dados cadastrais, financeiros e de crédito; **histórico de atividades do CRM** (notas e contatos); adicionar nota e contato direto no HubSpot; **Traçar Rota** até o cliente pelo Google Maps. |
+| **Oportunidade tributária** | Nos detalhes de cada empresa, o card **"Oportunidade tributária"** mostra onde ela provavelmente pagou imposto a mais (foco no serviço de recuperação tributária): a tese principal, a confiança, o período dentro dos 5 anos recuperáveis e as evidências tiradas dos dados públicos (Receita e compras públicas). Ao tocar, o card mostra como abordar, perguntas para validar na visita e outras possibilidades. Regras determinísticas, sem IA ([detalhes](#diagnóstico-tributário)). |
 | **Cadastro de empresa** | Fluxo de 2 passos (CNPJ → responsável: nome, telefone e e-mail). Consulta o CNPJ na BrasilAPI, geocodifica o endereço, grava no banco e leva a empresa e o responsável ao CRM da organização. Só aparece para quem tem permissão e **só aceita cadastrar se o usuário estiver a até 2 km da empresa**. |
 | **Rastreamento** | Quando o grupo do usuário liga o rastreamento, o app grava a posição a cada 5 minutos (posição atual + histórico). Só admins do grupo enxergam a posição dos membros. |
 | **Sincronização com o CRM** | O CRM é a fonte das empresas: a cada 10 minutos o backend traz pro banco as empresas novas do HubSpot, já enriquecidas e geocodificadas. |
@@ -157,6 +158,8 @@ lib/
     │                # filtros, backend do mapa), services (company_service, tracking_service),
     │                # data/CompanyRepository, presentation (viewmodel, filtros, detalhes), widgets/OsmMap
     ├── leads/       # busca textual (leads_page + leads_search_provider)
+    ├── diagnosis/   # diagnóstico tributário: models/TaxDiagnosis, diagnosis_service,
+    │                # taxDiagnosisProvider, presentation/tax_opportunity_card (card nos detalhes)
     ├── company/     # cadastro de empresa: add_company_modal, registration_service,
     │                # crm_service, constants (listas de departamentos, setores, regimes…)
     └── groups/      # equipe: models, group_service, group_provider, telas
@@ -333,6 +336,7 @@ No OSM não há camada híbrida (o botão de tipo de mapa some) e os marcadores 
 | `GET /health` | Verificação de saúde |
 | `POST /auth/exchange` | Troca `Authorization: Bearer <idToken>` pelo JWT interno (401 se inválido) |
 | `POST /company-lookup` | Dados cadastrais por CNPJ via BrasilAPI (404 se não existe, 502 se o provedor falha) |
+| `GET /diagnostico/tributario?group_id=&cnpj=` | Provável oportunidade de recuperação tributária da empresa (tese principal, outras, evidências). Exige ser membro, a organização ter CRM e o CNPJ estar na carteira (403/404). Ver [Diagnóstico tributário](#diagnóstico-tributário) |
 | `POST /crm` | Ações no HubSpot: `getNotesWithOwners`, `getContacts`, `addContact`, `addNote` (404 se a empresa não está no CRM, 502 se o CRM falha) |
 
 ### Integrações externas
@@ -353,6 +357,39 @@ A fonte das empresas é o CRM. A cada `CRM_SYNC_INTERVAL_SECONDS` (600), um loop
 - **Desligada por padrão** (`CRM_SYNC_ENABLED=false`). Para ligar em produção, use `infra/scripts/enable_crm_sync.sh` (ver [Deploy](#deploy-e-produção)).
 - **Backfill:** `python -m app.scripts.crm_backfill` importa o histórico uma vez (paginado por ID, idempotente). Sem backfill, a primeira execução do job só parte do maior ID atual do CRM, sem importar nada.
 
+### Diagnóstico tributário
+
+`backend/app/services/tax_diagnosis/` aponta, para cada empresa da carteira, **onde ela provavelmente pagou imposto a mais**. É uma hipótese para o comercial levar à visita, não um parecer. O diagnóstico lê as fontes `receita` e `compras` do enriquecimento, que já ficam em cache, e o **catálogo de teses do banco**, e não grava nada.
+
+| Arquivo | Papel |
+|---|---|
+| `signals.py` | Funções puras: dos dados da Receita (regime por ano, Simples/MEI, CNAEs, porte, situação) e das compras públicas aos sinais. A janela é de **5 anos** (prescrição, CTN art. 168) |
+| `catalog.py` | Lê o catálogo de teses do banco (`CatalogRepository`, em memória por 5 minutos; se o banco cair, segue com a última cópia). Só teses com `ativa = true` |
+| `rules.py` | `diagnose(signals, catalogo)`: só as **condições**, uma por tese (ligadas pelo `id`). Cada regra vira um achado com confiança e pontuação (base pela confiança + anos na janela + reforço por mudança de regime). O de maior pontuação é a tese principal |
+| `service.py` | Confere o acesso uma vez e lê receita e compras com `EnrichmentService.fetch_cached` |
+
+**O conteúdo das teses fica no banco** (`db/schema/020_teses_tributarias.sql`), em três tabelas:
+
+| Tabela | Conteúdo |
+|---|---|
+| `teses_tributarias` | Uma linha por tese: título, resumo, tributos, base legal, situação jurídica, `em_discussao` (só vira a principal sem outra), como abordar e `ativa` |
+| `teses_tributarias_perguntas` | Perguntas para validar na visita, por tese e em ordem |
+| `teses_tributarias_cnaes` | CNAEs (7 dígitos) que disparam a tese, com o produto revendido e `parcial` (só parte das vendas se encaixa, como supermercado no monofásico) |
+
+Mudar a redação, desligar uma tese ou incluir um CNAE é um `UPDATE`/`INSERT` no banco, sem deploy, e vale em até 5 minutos. Uma tese **nova** precisa também da condição em `rules.py`. A resposta traz em `versao` o maior `atualizado_em` das três tabelas. Só o papel `crm_sync` (Backend) lê essas tabelas. **Em produção a `020` precisa ser aplicada à mão.**
+
+| Tese | Quando aparece | Confiança |
+|---|---|---|
+| PIS/COFINS monofásico pago de novo no Simples | Simples + CNAE de revenda de monofásico (farmácia, cosméticos, autopeças, pneus, bebidas, combustíveis); supermercado conta como parcial | Alta (CNAE principal) / média |
+| ICMS-ST pago de novo no DAS | Simples + comércio de mercadoria típica de ST (material de construção, autopeças, bebidas, eletro…) | Média |
+| ICMS na base do PIS/COFINS (STF Tema 69) | Lucro Presumido/Real na janela + comércio ou indústria | Média |
+| Créditos de PIS/COFINS sobre insumos (STJ REsp 1.221.170) | Lucro Real + indústria, transporte ou agro | Média |
+| Retenções em vendas ao governo não compensadas | Fora do Simples + vendas a órgãos públicos nos últimos 24 meses | Média (≥ R$ 500 mil) / baixa |
+| ISS na base do PIS/COFINS (STF Tema 118) | Presumido/Real + serviço. Em discussão: só é a principal se não houver outra | Baixa |
+| INSS patronal sobre verbas indenizatórias | Fora do Simples + porte "Demais" | Baixa |
+
+Bloqueios: empresa não **ativa** ou **MEI** não recebe tese. Imune ou isenta de IRPJ perde as teses de PIS/COFINS e IRPJ. Sem dado da Receita, não há diagnóstico. Se faltar só compras públicas, a tese de retenções não é avaliada e o card avisa.
+
 ### Estrutura do código (`backend/app/`)
 
 ```
@@ -366,6 +403,7 @@ services/
   company_lookup_service.py · crm_service.py · geocoding_service.py
   postgrest_client.py    # acesso ao banco via PostgREST (papel crm_sync)
   crm_sync_service.py    # o mini ETL e o backfill
+  tax_diagnosis/         # diagnóstico tributário: signals, catalog (lê as teses do banco), rules, service
 scripts/crm_backfill.py
 ```
 
@@ -484,6 +522,7 @@ Tabelas de controle da sincronização (sem relação com as demais; só o papel
 | `group_members` | Participação N:N entre usuários e grupos, com `role` (`admin` ou `member`). |
 | `crm_sync_state` | Marca d'água da sincronização: maior ID de empresa do CRM já processado, com `last_run_at` e `last_status`. |
 | `crm_sync_pending` | Empresas do CRM que falharam no ETL: `attempts`, `last_error`, `next_retry_at`. |
+| `teses_tributarias`, `teses_tributarias_perguntas`, `teses_tributarias_cnaes` | Catálogo de teses do diagnóstico tributário (ver [Diagnóstico tributário](#diagnóstico-tributário)). Só o Backend lê. |
 
 ### Papéis e segurança (RLS)
 
