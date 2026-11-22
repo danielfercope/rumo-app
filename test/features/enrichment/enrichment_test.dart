@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rumo_app/core/services/api_client.dart';
 import 'package:rumo_app/features/company/crm_service.dart';
+import 'package:rumo_app/features/diagnosis/services/diagnosis_service.dart';
 import 'package:rumo_app/features/enrichment/models/enrichment_models.dart';
 import 'package:rumo_app/features/enrichment/presentation/enrichment_cards.dart';
 import 'package:rumo_app/features/enrichment/services/enrichment_service.dart';
@@ -11,6 +12,7 @@ import 'package:rumo_app/features/map/models/company_model.dart';
 import 'package:rumo_app/features/map/presentation/company_details_modal.dart';
 
 import '../../helpers/active_group.dart';
+import '../diagnosis/diagnosis_fixtures.dart';
 import 'enrichment_fixtures.dart';
 
 class MockApiClient extends Mock implements ApiClient {}
@@ -235,6 +237,8 @@ void main() {
           crmServiceProvider.overrideWithValue(crm),
           activeGroupOverride(),
           enrichmentServiceProvider.overrideWithValue(service),
+          diagnosisServiceProvider
+              .overrideWithValue(FakeDiagnosisService(diagnosisJson)),
         ],
         child: CupertinoApp(
           home: CupertinoPageScaffold(
