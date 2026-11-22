@@ -29,6 +29,8 @@ lib/
 ├── core/
 │   ├── app_config.dart                # Variáveis de ambiente (--dart-define-from-file)
 │   └── services/
+│       ├── client_error_reporter.dart # Web: erros não tratados → POST /backend/client-errors
+│       │                              # (mesmo erro seguido ignorado, máx. 10 por sessão)
 │       ├── api_client.dart            # Cliente HTTP do backend novo: troca idToken do
 │       │                              # Firebase por JWT interno e fala com PostgREST/
 │       │                              # FastAPI (get/post/upsert/rpc/backend)
@@ -425,6 +427,11 @@ gratuito (`rumo-app.duckdns.org` por padrão — parâmetro `DomainName` do temp
 > **Migrações**: `db/schema/*.sql` só são aplicadas automaticamente em banco **vazio**
 > (`docker-entrypoint-initdb.d`). Um arquivo novo (ex.: `008_crm_sync.sql`) precisa ser
 > aplicado à mão no banco de produção, via SSM, antes de ligar o recurso que depende dele.
+
+### Logs e erros
+
+- **Android/iOS**: Crashlytics (`main.dart`). **Web** não tem Crashlytics: `ClientErrorReporter` manda o erro pra `POST /backend/client-errors` (login opcional; 20/min por uid ou IP — `ClientErrorService`), que vira **uma linha JSON** `client_error {...}` no log do backend (JSON pra pilha não quebrar o evento nem forjar linha de log).
+- **Produção**: todos os containers logam no **CloudWatch** (grupo `/rumo-app/backend`, um stream por serviço, retenção `LogRetentionDays`=30) pelo driver `awslogs` em `docker-compose.prod.yml`, com a role da EC2. O grupo e a permissão vêm de `infra/aws/backend-stack.yaml` — **atualizar a stack antes do `make deploy`** (não recria a instância); sem o grupo os containers não sobem, e o `make deploy` confere isso antes. `docker compose logs` segue funcionando na EC2. Ver: `aws logs tail /rumo-app/backend --region us-east-1 --log-stream-names backend --follow`.
 
 ### Frontend em produção (Flutter Web + APK)
 

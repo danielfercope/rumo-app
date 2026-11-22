@@ -335,6 +335,7 @@ No OSM não há camada híbrida (o botão de tipo de mapa some) e os marcadores 
 |---|---|
 | `GET /health` | Verificação de saúde |
 | `POST /auth/exchange` | Troca `Authorization: Bearer <idToken>` pelo JWT interno (401 se inválido) |
+| `POST /client-errors` | Recebe erros do Flutter Web (sem Crashlytics) e grava uma linha JSON no log (`client_error {...}`). Login opcional; até 20 por minuto por usuário/IP (429 depois) |
 | `POST /company-lookup` | Dados cadastrais por CNPJ via BrasilAPI (404 se não existe, 502 se o provedor falha) |
 | `GET /diagnostico/tributario?group_id=&cnpj=` | Provável oportunidade de recuperação tributária da empresa (tese principal, outras, evidências). Exige ser membro, a organização ter CRM e o CNPJ estar na carteira (403/404). Ver [Diagnóstico tributário](#diagnóstico-tributário) |
 | `POST /crm` | Ações no HubSpot: `getNotesWithOwners`, `getContacts`, `addContact`, `addNote` (404 se a empresa não está no CRM, 502 se o CRM falha) |
@@ -750,6 +751,31 @@ make deploy INSTANCE_ID=<instance-id>   # git pull + docker compose up -d --buil
 ```
 
 O compose de produção (`docker-compose.backend.yml` + `docker-compose.prod.yml`) publica só 80/443 pelo Caddy; banco, PostgREST e backend ficam sem porta exposta.
+
+### Logs e erros
+
+| Origem | Para onde vai | Como ver |
+|---|---|---|
+| App Android/iOS | Firebase **Crashlytics** (erros não tratados) | Console do Firebase → Crashlytics |
+| App Web | `POST /backend/client-errors` → log do backend (o Crashlytics não existe no Web) | CloudWatch, stream `backend`, filtro `client_error` |
+| Backend, PostgREST, Caddy, Postgres (produção) | **CloudWatch Logs**, grupo `/rumo-app/backend`, um stream por serviço, retenção de 30 dias (parâmetro `LogRetentionDays`) | Console do CloudWatch ou `aws logs tail` (abaixo) |
+| Containers locais | `docker compose logs` (driver padrão) | `docker compose -f docker-compose.backend.yml logs -f backend` |
+
+```bash
+aws logs tail /rumo-app/backend --region us-east-1 --follow                          # tudo
+aws logs tail /rumo-app/backend --region us-east-1 --log-stream-names backend --since 1h
+aws logs tail /rumo-app/backend --region us-east-1 --filter-pattern client_error --since 1d
+```
+
+O envio é feito pelo driver `awslogs` do Docker (`docker-compose.prod.yml`), com as credenciais da role da EC2 — não há agente nem SDK. Na EC2, `docker compose logs` continua funcionando (cache local do Docker). Traceback do Python fica no mesmo evento da linha `ERROR:`.
+
+**Ativação (uma vez):** atualize a stack **antes** do primeiro `make deploy` com o novo compose — ela cria o grupo de logs e dá à role da EC2 permissão de escrita, **sem recriar a instância**. Sem o grupo, os containers não sobem; por isso o `make deploy` confere se ele existe e para antes.
+
+```bash
+aws cloudformation deploy --region us-east-1 --template-file infra/aws/backend-stack.yaml \
+  --stack-name rumo-app-backend --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides VpcId=<vpc-id> SubnetId=<subnet-id> AvailabilityZone=<az>
+```
 
 ### Frontend e APK
 
