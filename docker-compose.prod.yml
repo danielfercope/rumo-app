@@ -10,7 +10,7 @@
 #   volume EBS e preenchidos por `make deploy-web` / `make deploy-apk`;
 # - logs de todos os containers no CloudWatch (grupo /rumo-app/backend, um stream
 #   por serviço), via driver awslogs com as credenciais da role da EC2. O grupo e a
-#   permissão vêm de infra/aws/backend-stack.yaml: atualize a stack ANTES do
+#   permissão vêm de infra/aws/logs-stack.yaml: crie essa stack ANTES do
 #   primeiro `make deploy` com este arquivo, senão os containers não sobem.
 #   `docker compose logs` continua funcionando (cache local do Docker).
 

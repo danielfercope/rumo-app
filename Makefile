@@ -48,10 +48,10 @@ BRANCH ?= main
 
 deploy: ## Redeploy manual em produção via SSM (AWS CLI + INSTANCE_ID); acompanha a main: make deploy INSTANCE_ID=i-xxxx [BRANCH=main]
 	@# Os containers de produção logam no CloudWatch (docker-compose.prod.yml): sem o
-	@# grupo (criado pela stack infra/aws/backend-stack.yaml) eles nem sobem.
+	@# grupo (criado pela stack infra/aws/logs-stack.yaml) eles nem sobem.
 	@aws logs describe-log-groups --region $(AWS_REGION) --log-group-name-prefix /rumo-app/backend \
 		--query 'logGroups[?logGroupName==`/rumo-app/backend`].logGroupName' --output text | grep -q . \
-		|| { echo "Log group /rumo-app/backend não existe: atualize a stack rumo-app-backend antes (ver README, Logs)."; exit 1; }
+		|| { echo "Log group /rumo-app/backend não existe: crie a stack rumo-app-logs antes (ver README, Logs e erros)."; exit 1; }
 	aws ssm send-command --region $(AWS_REGION) \
 		--instance-ids $(INSTANCE_ID) \
 		--document-name "AWS-RunShellScript" \

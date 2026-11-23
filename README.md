@@ -123,7 +123,7 @@ rumo-app/
 │   ├── schema/           # 001…008 *.sql — schema, geo, RLS, funções, grupos, sync CRM
 │   └── seed/             # seed_companies.py (empresas fictícias)
 ├── infra/
-│   ├── aws/              # backend-stack.yaml, artifacts-stack.yaml (CloudFormation)
+│   ├── aws/              # backend-stack.yaml, artifacts-stack.yaml, logs-stack.yaml (CloudFormation)
 │   ├── scripts/          # deploy_frontend.sh, enable_crm_sync.sh, make_token.py
 │   ├── Caddyfile.local   # proxy do ambiente local
 │   ├── Caddyfile.production
@@ -758,7 +758,7 @@ O compose de produção (`docker-compose.backend.yml` + `docker-compose.prod.yml
 |---|---|---|
 | App Android/iOS | Firebase **Crashlytics** (erros não tratados) | Console do Firebase → Crashlytics |
 | App Web | `POST /backend/client-errors` → log do backend (o Crashlytics não existe no Web) | CloudWatch, stream `backend`, filtro `client_error` |
-| Backend, PostgREST, Caddy, Postgres (produção) | **CloudWatch Logs**, grupo `/rumo-app/backend`, um stream por serviço, retenção de 30 dias (parâmetro `LogRetentionDays`) | Console do CloudWatch ou `aws logs tail` (abaixo) |
+| Backend, PostgREST, Caddy, Postgres (produção) | **CloudWatch Logs**, grupo `/rumo-app/backend`, um stream por serviço, retenção de 30 dias (parâmetro `LogRetentionDays` da stack `rumo-app-logs`) | Console do CloudWatch ou `aws logs tail` (abaixo) |
 | Containers locais | `docker compose logs` (driver padrão) | `docker compose -f docker-compose.backend.yml logs -f backend` |
 
 ```bash
@@ -769,13 +769,14 @@ aws logs tail /rumo-app/backend --region us-east-1 --filter-pattern client_error
 
 O envio é feito pelo driver `awslogs` do Docker (`docker-compose.prod.yml`), com as credenciais da role da EC2 — não há agente nem SDK. Na EC2, `docker compose logs` continua funcionando (cache local do Docker). Traceback do Python fica no mesmo evento da linha `ERROR:`.
 
-**Ativação (uma vez):** atualize a stack **antes** do primeiro `make deploy` com o novo compose — ela cria o grupo de logs e dá à role da EC2 permissão de escrita, **sem recriar a instância**. Sem o grupo, os containers não sobem; por isso o `make deploy` confere se ele existe e para antes.
+**Ativação (uma vez):** crie a stack `rumo-app-logs` **antes** do primeiro `make deploy` com o novo compose. Ela cria o grupo de logs e anexa à role da EC2 a permissão de escrita — **não mexe na instância**. Sem o grupo, os containers não sobem; por isso o `make deploy` confere se ele existe e para antes.
 
 ```bash
-aws cloudformation deploy --region us-east-1 --template-file infra/aws/backend-stack.yaml \
-  --stack-name rumo-app-backend --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides VpcId=<vpc-id> SubnetId=<subnet-id> AvailabilityZone=<az>
+aws cloudformation deploy --region us-east-1 --template-file infra/aws/logs-stack.yaml \
+  --stack-name rumo-app-logs --capabilities CAPABILITY_IAM
 ```
+
+> **Não atualize a stack `rumo-app-backend` para isso.** O AMI vem de um parâmetro do SSM (`LatestAmiId`) que é resolvido de novo a cada update, e o `UserData` da `main` já difere do da instância: um update hoje **recria a EC2**. Antes de qualquer update nela, gere um change set (`--no-execute-changeset`) e confira se `BackendInstance` aparece com `Replacement: True`.
 
 ### Frontend e APK
 
