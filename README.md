@@ -621,7 +621,7 @@ Opções avançadas do backend, com padrão no `config.py`: `CRM_SYNC_OVERLAP_MI
 - [Docker](https://www.docker.com/) + Docker Compose (backend local)
 - Projeto Firebase configurado (Auth, Crashlytics, Analytics) e chaves do Google Maps/Geocoding
 - Para a sincronização com o CRM: um token do HubSpot. A consulta de CNPJ usa a BrasilAPI, pública e sem chave
-- **iOS:** um Mac com Xcode, idealmente com um **iPhone físico** (o simulador não reproduz fielmente a localização em segundo plano)
+- **iOS:** um Mac com Xcode, idealmente com um **iPhone físico** (o simulador não reproduz fielmente o GPS e as permissões de localização)
 - **Android:** Android Studio (SDK) e um emulador ou dispositivo com depuração USB
 
 ### 1. Backend local
@@ -652,7 +652,7 @@ O `make run` (`infra/scripts/run_app.sh`) abre o Docker se estiver parado, sobe 
 
 Sem o `make`, `flutter run -d chrome --dart-define-from-file=.env` também funciona no Web (o app usa `http://<host da página>:8080`); pra celular, passe `--dart-define=API_BASE_URL=http://<IP da máquina>:8080`.
 
-**Android:** o app pede `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` e `ACCESS_BACKGROUND_LOCATION` em tempo de execução.
+**Android:** o app pede `ACCESS_FINE_LOCATION` e `ACCESS_COARSE_LOCATION` em tempo de execução — só localização em primeiro plano. O rastreamento da equipe roda enquanto o app está aberto; não há coleta em segundo plano (nem `ACCESS_BACKGROUND_LOCATION`, nem `NSLocationAlways*` no iOS).
 
 **iOS** — passo extra, porque o código nativo não lê `--dart-define`:
 1. Copie `ios/Flutter/Secrets.xcconfig.example` para `ios/Flutter/Secrets.xcconfig`.

@@ -564,11 +564,11 @@ flutter devices
 flutter run --dart-define-from-file=.env   # ou -d <id> pra escolher o dispositivo
 ```
 
-Emulador do Android Studio ou dispositivo físico com depuração USB habilitada. O app pede permissões de localização em runtime (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`).
+Emulador do Android Studio ou dispositivo físico com depuração USB habilitada. O app pede permissões de localização em runtime (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) — só primeiro plano: o rastreamento roda com o app aberto, sem `ACCESS_BACKGROUND_LOCATION` nem `NSLocationAlways*` no iOS.
 
 ### Via app — iOS
 
-**Exige um Mac com Xcode instalado.** O simulador (`open -a Simulator`) serve pra desenvolver, mas validar em **iPhone físico** é necessário — permissões de localização em background se comportam diferente no simulador.
+**Exige um Mac com Xcode instalado.** O simulador (`open -a Simulator`) serve pra desenvolver, mas validar em **iPhone físico** é necessário — GPS e permissões de localização se comportam diferente no simulador.
 
 Passo extra específico do iOS (o código nativo não lê `--dart-define`):
 1. Copiar `ios/Flutter/Secrets.xcconfig.example` → `ios/Flutter/Secrets.xcconfig`.
