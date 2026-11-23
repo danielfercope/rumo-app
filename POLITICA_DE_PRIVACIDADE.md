@@ -16,12 +16,14 @@ O RUMO é uma ferramenta de uso interno voltada para equipes de vendas externas 
 Ao criar uma conta, coletamos: nome completo, e-mail, senha (armazenada de forma criptografada pelo provedor de autenticação) e departamento/função na empresa. Caso o login seja feito via Google, recebemos também nome, e-mail e foto de perfil associados à conta Google utilizada.
 
 ### 1.2 Dados de localização (geolocalização)
-Enquanto a sessão estiver ativa, o aplicativo coleta a localização GPS do dispositivo a cada 5 minutos, para fins de:
+Enquanto o aplicativo estiver aberto e em uso (em primeiro plano), ele coleta a localização GPS do dispositivo a cada 5 minutos, para fins de:
 - Exibir empresas/leads no raio de atuação do usuário no mapa;
 - Registrar a posição da equipe em campo (visualização em tempo real para gestão comercial);
 - Manter um histórico de localizações para fins de análise de rotas e cobertura territorial.
 
 Essa é a coleta de dado pessoal mais sensível feita pelo aplicativo, por ser contínua e vinculada à identidade do colaborador. Ela existe porque é o núcleo funcional do produto — sem ela, o aplicativo não cumpre seu propósito de prospecção geoespacial.
+
+O aplicativo **não coleta localização em segundo plano**: ao ser minimizado, ter a tela bloqueada ou ser fechado, a coleta é interrompida e só volta quando ele é aberto de novo. Por isso, ele pede apenas a permissão de localização "durante o uso do app", nunca a de "permitir o tempo todo".
 
 ### 1.3 Dados de uso e diagnóstico
 Utilizamos o Firebase Analytics e o Firebase Crashlytics (Google) para coletar, de forma agregada: telas visitadas, eventos de navegação, informações técnicas do dispositivo (modelo, sistema operacional) e relatórios de falhas (crashes) da aplicação. Esses dados são usados exclusivamente para melhorar a estabilidade e a experiência de uso do aplicativo.
