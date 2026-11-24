@@ -38,6 +38,28 @@ Future<void> pumpCards(
 }
 
 void main() {
+  group('porteLabel', () {
+    test('traduz os portes da Receita', () {
+      expect(porteLabel('DEMAIS'), 'Médio/grande (acima de EPP)');
+      expect(porteLabel('05 - DEMAIS'), 'Médio/grande (acima de EPP)');
+      expect(porteLabel('MICRO EMPRESA'), 'Microempresa (ME)');
+      expect(porteLabel('ME'), 'Microempresa (ME)');
+      expect(porteLabel('EMPRESA DE PEQUENO PORTE'), 'Pequeno porte (EPP)');
+      expect(porteLabel('EPP'), 'Pequeno porte (EPP)');
+    });
+
+    test('esconde o que não informa nada', () {
+      expect(porteLabel(null), isNull);
+      expect(porteLabel(''), isNull);
+      expect(porteLabel('NÃO INFORMADO'), isNull);
+      expect(porteLabel('00 - Não informado'), isNull);
+    });
+
+    test('valor desconhecido aparece como veio, só capitalizado', () {
+      expect(porteLabel('OUTRO PORTE'), 'Outro Porte');
+    });
+  });
+
   group('modelos', () {
     test('Receita: regime atual, endereço numa linha e sócios', () {
       final d = ReceitaData.fromJson(receitaJson);
@@ -107,7 +129,7 @@ void main() {
       // Receita
       expect(find.text('Ativa'), findsOneWidget);
       expect(find.text('Lucro Real'), findsOneWidget);
-      expect(find.text('Porte: Demais'), findsOneWidget);
+      expect(find.text('Porte: Médio/grande (acima de EPP)'), findsOneWidget);
       expect(find.textContaining('Capital R\$ 9,3 bi'), findsOneWidget);
       expect(find.textContaining('2 sócios/administradores'), findsOneWidget);
       // Compras

@@ -418,7 +418,7 @@ class ReceitaView extends StatelessWidget {
               Pill(idade == 0
                   ? 'Aberta há menos de 1 ano'
                   : '$idade ${idade == 1 ? 'ano' : 'anos'}'),
-            if (d.porte != null) Pill('Porte: ${titleCaseBr(d.porte!)}'),
+            if (porteLabel(d.porte) case final porte?) Pill('Porte: $porte'),
             if (regime != null) Pill(regime, color: _accent),
             if (!d.matriz) const Pill('Filial'),
           ]),
