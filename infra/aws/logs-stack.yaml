@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Logs dos containers do backend do RUMO no CloudWatch: o grupo /rumo-app/backend e a
+  permissao de escrita na role da EC2 (driver awslogs, docker-compose.prod.yml).
+  Stack SEPARADA da rumo-app-backend de proposito: atualizar aquela re-resolve o AMI
+  (parametro do SSM) e o UserData, o que recria a instancia. Esta so cria o grupo e
+  anexa uma politica a role existente - nao mexe na EC2.
+
+Parameters:
+  InstanceRoleName:
+    Type: String
+    Default: rumo-app-backend-instance-role
+    Description: Role da EC2 criada pela stack rumo-app-backend (RoleName fixo la)
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 60, 90, 180, 365]
+    Description: Dias que os logs ficam no CloudWatch
+
+Resources:
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: /rumo-app/backend
+      RetentionInDays: !Ref LogRetentionDays
+
+  # So escreve, e so neste grupo.
+  WriteLogsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: write-rumo-app-logs
+      Roles:
+        - !Ref InstanceRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+            Resource:
+              - !GetAtt BackendLogGroup.Arn
+              - !Sub "${BackendLogGroup.Arn}:log-stream:*"
+
+Outputs:
+  LogGroupName:
+    Value: !Ref BackendLogGroup

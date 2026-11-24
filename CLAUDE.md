@@ -424,6 +424,11 @@ gratuito (`rumo-app.duckdns.org` por padrão — parâmetro `DomainName` do temp
 > O parâmetro `RepoBranch` só vale no boot de uma instância nova: trocá-lo numa stack existente
 > não move a instância já criada (e mexer no UserData derruba a EC2) — use o `make deploy`.
 >
+> **Update da stack `rumo-app-backend` recria a EC2 hoje**: `LatestAmiId` (parâmetro do SSM) é
+> resolvido de novo a cada update e o `UserData` da `main` já difere do da instância. Antes de qualquer
+> update, gere um change set (`--no-execute-changeset`) e confira se `BackendInstance` vem com
+> `Replacement: True`. Recurso novo que não precisa da instância vai numa stack separada (ex.: `logs-stack.yaml`).
+>
 > **Migrações**: `db/schema/*.sql` só são aplicadas automaticamente em banco **vazio**
 > (`docker-entrypoint-initdb.d`). Um arquivo novo (ex.: `008_crm_sync.sql`) precisa ser
 > aplicado à mão no banco de produção, via SSM, antes de ligar o recurso que depende dele.
@@ -431,7 +436,7 @@ gratuito (`rumo-app.duckdns.org` por padrão — parâmetro `DomainName` do temp
 ### Logs e erros
 
 - **Android/iOS**: Crashlytics (`main.dart`). **Web** não tem Crashlytics: `ClientErrorReporter` manda o erro pra `POST /backend/client-errors` (login opcional; 20/min por uid ou IP — `ClientErrorService`), que vira **uma linha JSON** `client_error {...}` no log do backend (JSON pra pilha não quebrar o evento nem forjar linha de log).
-- **Produção**: todos os containers logam no **CloudWatch** (grupo `/rumo-app/backend`, um stream por serviço, retenção `LogRetentionDays`=30) pelo driver `awslogs` em `docker-compose.prod.yml`, com a role da EC2. O grupo e a permissão vêm de `infra/aws/backend-stack.yaml` — **atualizar a stack antes do `make deploy`** (não recria a instância); sem o grupo os containers não sobem, e o `make deploy` confere isso antes. `docker compose logs` segue funcionando na EC2. Ver: `aws logs tail /rumo-app/backend --region us-east-1 --log-stream-names backend --follow`.
+- **Produção**: todos os containers logam no **CloudWatch** (grupo `/rumo-app/backend`, um stream por serviço, retenção `LogRetentionDays`=30 na `rumo-app-logs`) pelo driver `awslogs` em `docker-compose.prod.yml`, com a role da EC2. O grupo e a permissão vêm da stack separada `infra/aws/logs-stack.yaml` (`rumo-app-logs`, só cria o grupo e anexa uma política à role existente) — **criá-la antes do `make deploy`**; sem o grupo os containers não sobem, e o `make deploy` confere isso antes. `docker compose logs` segue funcionando na EC2. Ver: `aws logs tail /rumo-app/backend --region us-east-1 --log-stream-names backend --follow`.
 
 ### Frontend em produção (Flutter Web + APK)
 
