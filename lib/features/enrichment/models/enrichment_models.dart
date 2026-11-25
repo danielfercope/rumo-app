@@ -230,8 +230,28 @@ String _title(String text) => text
     .join(' ')
     .replaceFirstMapped(RegExp(r'^[a-z]'), (m) => m[0]!.toUpperCase());
 
-/// Exposto pros widgets (ex.: porte "DEMAIS" → "Demais").
+/// Exposto pros widgets (ex.: "JARAGUA DO SUL" → "Jaragua do Sul").
 String titleCaseBr(String text) => _title(text);
+
+/// Porte do CNPJ em texto de vendedor. A Receita só tem ME, EPP, "Demais"
+/// (nem ME nem EPP: médias e grandes, ou natureza jurídica que não pode ser
+/// ME/EPP, como S/A) e "Não informado". É enquadramento declarado, não
+/// faturamento apurado. Devolve null quando não há o que mostrar.
+String? porteLabel(String? porte) {
+  if (porte == null) return null;
+  final p = porte
+      .trim()
+      .toUpperCase()
+      .replaceAll(RegExp(r'^\d+\s*-\s*'), '') // "05 - DEMAIS"
+      .replaceAll('Ã', 'A');
+  if (p.isEmpty || p == 'NAO INFORMADO') return null;
+  return switch (p) {
+    'DEMAIS' => 'Médio/grande (acima de EPP)',
+    'MICRO EMPRESA' || 'MICROEMPRESA' || 'ME' => 'Microempresa (ME)',
+    'EMPRESA DE PEQUENO PORTE' || 'EPP' => 'Pequeno porte (EPP)',
+    _ => _title(porte),
+  };
+}
 
 // ─── Compras públicas ───────────────────────────────────────────────
 
